@@ -44,6 +44,9 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 | D18 | 4 | 매출 타이밍: **v0(2~3개월) 완성 후 Layer 1 대행 시작.** 그 사이 매출 공백 인정 | Robin |
 | D19 | 4 | RAG 첫 활용: **고객사용 패키지 초안 데모** — v0 완료 즉시 v1로 자연스럽게 이어짐. 영업 미팅에서 그 회사 맞춤 데모 보여주는 무기 | Robin |
 | D20 | 4 | `b2bcorpcom`은 **임시 코드명**. 실제 브랜드는 추후 결정 → UI 카피·문서엔 가능한 한 코드명 노출 최소화, 추후 일괄 교체 용이하게 상수화 | Robin |
+| D21 | 5 | v0 Supabase 프로젝트: **신규 생성 `b2bcorpcom`** (id `ywbyjmnkospyvbsaaxqc`, 서울 리전, $10/월). 기존 `Slog` 프로젝트는 Robin이 대시보드에서 삭제 | Robin |
+| D22 | 5 | 어드민 허용 이메일: **`robin@vidfolio.kr`** 단일 (allowlist는 `public.config.admin_allowed_emails` 행에 적재) | Robin |
+| D23 | 5 | 어드민 배포처: **Vercel** (Claude가 MCP로 직접 배포 → Robin 손이 가장 덜 감, D15 정신). Cloudflare Pages 대신 채택 — OpenNext 어댑터 우회 가능 + Vercel CLI 없이 자동화 | Claude |
 
 ---
 
