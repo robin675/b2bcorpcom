@@ -1,5 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @b2bcorpcom/admin build",
+  "buildCommand": "pnpm --filter @b2bcorpcom/admin build && mkdir -p apps/admin && rm -rf apps/admin/.next && mv .next apps/admin/.next",
   "installCommand": "pnpm install --frozen-lockfile"
 }
