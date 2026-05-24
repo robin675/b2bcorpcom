@@ -6,7 +6,13 @@ function required(name: string, value: string | undefined): string {
 export const env = {
   SUPABASE_URL: () => required("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL),
   SUPABASE_ANON_KEY: () => required("NEXT_PUBLIC_SUPABASE_ANON_KEY", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
-  SITE_URL: () => process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  SITE_URL: () => {
+    // Order: explicit > Vercel production URL > Vercel preview URL > localhost.
+    if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+    if (process.env.VERCEL_PROJECT_PRODUCTION_URL) return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+    return "http://localhost:3000";
+  },
   ALLOWED_EMAILS: () =>
     (process.env.ADMIN_ALLOWED_EMAILS ?? "")
       .split(",")
