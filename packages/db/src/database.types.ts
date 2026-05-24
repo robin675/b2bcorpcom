@@ -59,6 +59,8 @@ export interface Database {
           search_query: string | null;
           discovered_at: string;
           status: string;
+          fetch_failed_count: number;
+          next_attempt_after: string | null;
         };
         Insert: {
           id?: string;
@@ -69,6 +71,8 @@ export interface Database {
           search_query?: string | null;
           discovered_at?: string;
           status?: string;
+          fetch_failed_count?: number;
+          next_attempt_after?: string | null;
         };
         Update: {
           id?: string;
@@ -79,6 +83,8 @@ export interface Database {
           search_query?: string | null;
           discovered_at?: string;
           status?: string;
+          fetch_failed_count?: number;
+          next_attempt_after?: string | null;
         };
         Relationships: [];
       };
@@ -166,7 +172,8 @@ export interface Database {
       document: {
         Row: {
           id: string;
-          seed_id: string;
+          seed_id: string | null;
+          candidate_id: string | null;
           crawl_run: string | null;
           source_url: string;
           doc_type: string;
@@ -176,10 +183,12 @@ export interface Database {
           title: string | null;
           published_at: string | null;
           fetched_at: string;
+          fetch_source: string | null;
         };
         Insert: {
           id?: string;
-          seed_id: string;
+          seed_id?: string | null;
+          candidate_id?: string | null;
           crawl_run?: string | null;
           source_url: string;
           doc_type: string;
@@ -189,10 +198,12 @@ export interface Database {
           title?: string | null;
           published_at?: string | null;
           fetched_at?: string;
+          fetch_source?: string | null;
         };
         Update: {
           id?: string;
-          seed_id?: string;
+          seed_id?: string | null;
+          candidate_id?: string | null;
           crawl_run?: string | null;
           source_url?: string;
           doc_type?: string;
@@ -202,6 +213,7 @@ export interface Database {
           title?: string | null;
           published_at?: string | null;
           fetched_at?: string;
+          fetch_source?: string | null;
         };
         Relationships: [];
       };

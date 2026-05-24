@@ -22,15 +22,22 @@ export default async function CandidatesPage() {
     .limit(PAGE_SIZE);
 
   const ids = (candidates ?? []).map((c) => c.id);
-  const { data: scores } = ids.length
-    ? await supabase
-        .from("candidate_score")
-        .select("candidate_id, score, reasons, evaluated_at")
-        .in("candidate_id", ids)
-        .order("evaluated_at", { ascending: false })
-    : { data: [] };
+  const [{ data: scores }, { data: docCounts }] = await Promise.all([
+    ids.length
+      ? supabase
+          .from("candidate_score")
+          .select("candidate_id, score, reasons, evaluated_at")
+          .in("candidate_id", ids)
+          .order("evaluated_at", { ascending: false })
+      : Promise.resolve({ data: [] as { candidate_id: string; score: number; reasons: unknown; evaluated_at: string }[] }),
+    ids.length
+      ? supabase
+          .from("document")
+          .select("candidate_id")
+          .in("candidate_id", ids)
+      : Promise.resolve({ data: [] as { candidate_id: string }[] }),
+  ]);
 
-  // Most-recent score per candidate (scores are already sorted desc by evaluated_at).
   const scoreByCandidate = new Map<string, { score: number; reasons: Reasons }>();
   for (const s of scores ?? []) {
     if (!scoreByCandidate.has(s.candidate_id)) {
@@ -39,6 +46,12 @@ export default async function CandidatesPage() {
         reasons: (s.reasons ?? {}) as Reasons,
       });
     }
+  }
+
+  const docCountByCandidate = new Map<string, number>();
+  for (const d of docCounts ?? []) {
+    if (!d.candidate_id) continue;
+    docCountByCandidate.set(d.candidate_id, (docCountByCandidate.get(d.candidate_id) ?? 0) + 1);
   }
 
   return (
@@ -84,6 +97,7 @@ export default async function CandidatesPage() {
                 <th className="px-4 py-2 font-medium">검색어</th>
                 <th className="px-4 py-2 font-medium">상태</th>
                 <th className="px-4 py-2 font-medium">점수</th>
+                <th className="px-4 py-2 font-medium">콘텐츠</th>
                 <th className="px-4 py-2 font-medium">평가</th>
                 <th className="px-4 py-2 font-medium">발견 시각</th>
               </tr>
@@ -91,17 +105,16 @@ export default async function CandidatesPage() {
             <tbody>
               {candidates.map((c) => {
                 const s = scoreByCandidate.get(c.id);
+                const docCount = docCountByCandidate.get(c.id) ?? 0;
                 return (
                   <tr key={c.id} className="border-t border-zinc-100 align-top">
                     <td className="px-4 py-2 font-mono text-xs">
-                      <a
-                        href={c.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <Link
+                        href={`/candidates/${c.id}`}
                         className="text-zinc-900 underline hover:text-zinc-600"
                       >
                         {c.domain}
-                      </a>
+                      </Link>
                     </td>
                     <td className="px-4 py-2 text-zinc-700">{c.display_name ?? "—"}</td>
                     <td className="px-4 py-2 text-zinc-500">{c.search_query ?? "—"}</td>
@@ -123,6 +136,18 @@ export default async function CandidatesPage() {
                         >
                           {s.score}
                         </span>
+                      ) : (
+                        <span className="text-zinc-300">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      {docCount > 0 ? (
+                        <Link
+                          href={`/candidates/${c.id}`}
+                          className="font-semibold text-zinc-800 underline hover:text-zinc-600"
+                        >
+                          {docCount}건
+                        </Link>
                       ) : (
                         <span className="text-zinc-300">—</span>
                       )}

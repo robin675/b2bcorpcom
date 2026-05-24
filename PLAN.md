@@ -58,26 +58,33 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 | D32 | 7 | `candidate.status` 전이 규칙: `pending → scored`(평가 끝)/`scored`(fetch 실패도 동일, score=0). 모델·파싱 에러는 status 유지 → 다음 Cron이 재시도. Robin의 yes/no는 회차 8(주차 4)에서 `seed` 등록·`rejected`로 확장 | Claude |
 | D33 | 7 | Scorer 프롬프트 버전은 `SCORER_RUBRIC_VERSION` 상수로 관리, `candidate_score.model_version`에 기록 → 같은 후보를 새 룰로 재채점할 때 두 row가 공존하고 최신 row만 화면에 보임 | Claude |
 | D34 | 8 | **방향 전환 — Dogfood 모드.** Naver Developer 승인·Anthropic API 키·Cloudflare 토큰 등 외부 API 연결은 **모두 후순위**. 그 동안은 이 채팅의 Claude Code가 직접 Discovery·Scorer 역할을 수행 (WebSearch + WebFetch + Supabase MCP). v0 수집 파이프라인을 사람이 한 번 굴려보는 것이 우선이고, API 연결에 시간을 통째로 까먹지 않기 위함. 이미 만들어둔 워커 코드는 그대로 두고 데이터·룰브릭이 검증된 뒤에 배포 | Robin |
+| D35 | 8 | **v0 영구 운영 모드 = Claude Code 직접 실행.** Naver·Anthropic API·Cloudflare 워커 배포는 v0 내내 보류. Claude Code가 매 세션에서 Discovery·Scorer·Crawler를 직접 수행하고 Supabase MCP로 적재. 워커 코드는 동결 상태로 보존(컨텍스트 한계 보일 때 배포 재검토). v0 로드맵 12주 → 8주로 단축 가능 | Robin |
+| D36 | 8 | **차단 회피 정책.** 도메인당 한 회차에 fetch 최대 1회. 2회 누적 실패 시 `candidate.next_attempt_after`로 14일 backoff. UA에 contact 명시(`+robin@vidfolio.kr`), robots.txt 사전 확인. 빠른 것보다 차단 안 먹는 게 결과적으로 더 빠르다 — 보수적 운영 | Robin |
+| D37 | 8 | **콘텐츠 fetch 우회 다중화 (안전 순).** ① Wayback Machine(`archive.org/wayback`) → ② Jina Reader(`r.jina.ai`) → ③ Supabase Edge Function(datacenter IP) → ④ RSS/sitemap.xml → ⑤ WebSearch 스니펫. 한 도메인당 1번부터 순차 시도, 첫 성공으로 마감. `document.fetch_source` 컬럼에 어느 경로 통했는지 기록 | Claude |
+| D38 | 8 | **콘텐츠 평가 기준은 보류.** 충분한 양이 쌓인 뒤 Robin이 데이터로 직접 판단. 회차 8은 일단 모으기에 집중 — `content_score`/`content_reasons` 컬럼 안 만듦 | Robin |
 
 ---
 
-## 3. v0 아키텍처
+## 3. v0 아키텍처 (D35 이후)
 
 ### 데이터 흐름
 ```
 [Robin과의 인터페이스]
-  • Claude Code (이 채팅)   — 방향 제시, 신규 기능 요청, 의논
-  • Admin Dashboard         — 결과 보기, 주 1회 검수, 운영 파라미터 조정
+  • Claude Code (이 채팅)   — 방향 제시 + 직접 실행 (Discovery·Scorer·Crawler)
+  • Admin Dashboard         — 결과 보기, 검수, 운영 파라미터 조정
 
-[자동 동작 시스템 (백엔드, Cron 주기 동작)]
-  ① Discovery Worker  — 검색 API로 "한국 중견 B2B 제조" 후보 회사 URL 발굴
-  ② Scorer Worker     — Claude API로 "기초 깔끔 점수" 평가
-                          (활발도 ≠ 점수, 과도한 브랜딩 = 감점)
-  ③ Seed Registry     — 임계점 통과 회사 자동 등록 (Supabase Table)
-  ④ Crawler Worker    — 시드의 회사소개·보도자료·블로그 포스트 수집
-  ⑤ Normalizer        — HTML → 정제 텍스트 + 메타데이터
-  ⑥ Embedder          — pgvector 임베딩 인덱싱
-  ⑦ RAG Storage       — Supabase Postgres + pgvector + Storage(원본 HTML)
+[Claude Code가 매 세션에서 수행하는 단계]
+  ① Discovery   — WebSearch로 후보 회사 URL 발굴 → `candidate` 적재
+  ② Scorer      — WebSearch 스니펫 + (가능 시) 본문 fetch 기반 점수 → `candidate_score`
+  ③ Crawler     — 회사별 about/press/blog URL 수집 → `document` 적재
+                  fetch 경로: Wayback → Jina → Edge Function → RSS → snippet (D37)
+                  차단 회피: 도메인당 회차 1회, 2회 실패 시 14일 backoff (D36)
+  ④ Normalizer  — fetch된 본문 정제 텍스트 → `document.normalized_text`
+  ⑤ Embedder    — pgvector 임베딩 (회차 10에 도구 결정)
+  ⑥ RAG UI      — 의미 검색 (회차 11)
+
+[동결 보존 — 컨텍스트 한계 시 배포 검토]
+  workers/discovery, workers/scorer  : Cloudflare Worker 코드 (v0 미사용)
 ```
 
 ### Admin Dashboard 기능 (Robin 전용)
@@ -89,33 +96,30 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 
 ---
 
-## 4. v0 구현 단계 (12주, 2~3개월)
+## 4. v0 구현 단계 (D35 이후 — 8주로 단축)
 
-| 주차 | 마일스톤 | 검증(=Robin이 결과로 확인할 수 있는 것) |
-|------|----------|------------------------------------------|
-| 1 | 레포 초기화, Supabase 스키마 설계, Auth 어드민 골격 | 어드민에 로그인되고 빈 화면 뜸 |
-| 2 | Discovery Worker v1: 키워드 검색 → 후보 URL 적재 | 어드민에서 "후보 회사 30~50개" 리스트 확인 |
-| 3 | Scorer Worker v1: 페이지 fetch + Claude 평가 + 점수 저장 | 후보별 점수 + 짧은 평가 사유 표시 |
-| 4 | Seed Registry + 임계점 자동 채택 + 검수 UI | "이번 주 채택 N개" 화면, 체크박스 yes/no |
-| 5 | Crawler Worker v1: 회사소개·보도자료·블로그 포스트 수집 | 시드 1곳당 수집된 페이지 수 + 샘플 텍스트 |
-| 6 | Normalizer + 원본/정제본 Storage | 정제된 마크다운 미리보기 |
-| 7 | 운영 파라미터 UI (키워드·임계점·빈도 변경) | 코드 안 만지고 Robin이 직접 조정 |
-| 8 | 패턴 교정 피드백 루프 → Discovery 프롬프트에 반영 | "거른 회사" 입력 후 다음 발굴에 그 패턴 회피 확인 |
-| 9 | 크롤 변경 감지 + 재수집 스케줄 | 새 글이 올라온 시드 자동 갱신 |
-| 10 | Embedder + pgvector 인덱싱 | 어드민에서 "유사 콘텐츠 찾기" 검색 동작 |
-| 11 | RAG 검색 UI (의미 기반 + 키워드 혼합) | "보도자료 톤이 깔끔한 사례 5개" 식 질의 |
-| 12 | 모니터링·알람·일일 운영 리포트 메일 | 매일 아침 "어제 N개 수집, M개 채택, 에러 K건" 메일 |
-| 13+ | **v1 즉시 시작: 고객사용 패키지 초안 데모** (D19) — Layer 1 영업 무기로 활용 | 고객사명·홈페이지 입력 → RAG 참조한 20개 에셋 초안 생성 |
+| 회차 | 주차 | 마일스톤 | 검증 |
+|------|------|----------|------|
+| 5 | 1 | 어드민 골격 + Supabase + Vercel ✅ | 로그인되고 빈 화면 뜸 |
+| 6 | 2 | Discovery·어드민 `/candidates`·`/config` (워커 코드 동결 보존) ✅ | 후보 리스트 화면 |
+| 7 | 3 | Scorer 룰브릭(`packages/ai`) + 점수 컬럼 ✅ | 점수+사유 펼침 |
+| **8** | **4** | **콘텐츠 1차 수집** (70↑ 8개 회사의 about/press/blog) + 우회 fetch (D37) + 차단 회피(D36) | 회사별 콘텐츠 4~6건씩 적재, 어드민에 회사별 상세 화면 |
+| 9 | 5 | 운영 파라미터 GUI 완성 + 패턴 교정 피드백 (`operator_feedback`) + 콘텐츠 평가 기준 결정 (Robin) | Robin이 GUI에서 키워드·블록리스트·룰브릭 수정 |
+| 10 | 6 | Embedder + pgvector 인덱싱 (OQ6 결정) | "유사 콘텐츠 찾기" 동작 |
+| 11 | 7 | RAG 검색 UI (의미 + 키워드 혼합) | "보도자료 톤 깔끔한 사례 5개" 의미 검색 |
+| **12** | **8** | **v1 점프 — 고객사 데모 패키지 생성기** (D19) | 고객사 URL 입력 → RAG 참조 20개 에셋 초안 |
 
 ---
 
 ## 5. 보류 / 다음 회차 결정사항
 
-- **OQ1.** 도메인 — `b2bcorpcom`이 임시 코드명이므로 당분간 무료 서브도메인(`*.workers.dev`, `*.pages.dev`)으로 운영, 브랜드 확정 시 도메인 구매·연결.
-- **OQ2.** Discovery 검색 엔진 — Google CSE / Bing API / Brave Search 중 선택 (비용·할당량 봐서 v0 1주차에 결정).
-- **OQ3.** 점수 임계점의 초기값 — 발굴 100개 중 채택 N개가 적절한지 6주차에 실측해 조정.
-- **OQ4.** 저작권·robots.txt 처리 정책 — 일단 robots.txt 준수, RAG 내부 검색용에 한정, 외부 노출 시 별도 검토 (v0 단계에서 외부 노출 X).
-- **OQ5.** Layer 1 대행 서비스 랜딩 페이지는 v0 이후로 보류 (v0가 안정되면 별도 사이트로 추가).
+- **OQ1.** 도메인 — `b2bcorpcom`이 임시 코드명이므로 당분간 무료 서브도메인으로 운영, 브랜드 확정 시 도메인 구매·연결.
+- ~~OQ2~~ — D26 → **D35로 폐기** (Naver API 안 씀, Claude Code가 WebSearch로 직접 발굴).
+- **OQ3.** 점수 임계점 초기값 — 후보 충분히 쌓이면 분포 보고 결정 (회차 9).
+- **OQ4.** robots.txt 처리 — 콘텐츠 fetch 시 사전 확인 (D36 안에 흡수).
+- **OQ5.** Layer 1 대행 랜딩 페이지 — v1 데모 만든 직후(회차 12) 별도 사이트로 추가.
+- **OQ6 (신설).** 임베딩 도구·모델 — Anthropic 임베딩 / OpenAI ada-002 / Voyage / Cohere / 로컬 중 선택. 회차 10에서 결정.
+- **OQ7 (신설).** 콘텐츠 평가·선별 기준 (D38 보류분) — 회차 8 데이터 본 다음 Robin이 결정.
 
 ---
 
@@ -165,35 +169,45 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 - 어드민 `/candidates`: 점수 컬럼(색상 표시 — 80↑ 에메랄드, 50↑ 진한 회색, 그 미만 흐림) + `<details>`로 펼치는 4행 reasons(category_fit/clean_basics/over_branded/verdict).
 - 함정 메모: ESLint `react/no-unescaped-entities`가 한국어 큰따옴표를 막아서 `&ldquo;/&rdquo;`로 escape 필요.
 
-**다음 (회차 8 — Dogfood 1라운드)**
-- D34에 따라 Naver/Cloudflare/Anthropic 연결은 모두 후순위. 이 채팅의 Claude Code가 직접:
-  1. WebSearch로 키워드별 후보 도메인 발굴 → `discovery_run` + `candidate` row 적재 (Supabase MCP).
-  2. WebFetch로 각 후보 홈페이지 fetch → 이 자리에서 D13 룰브릭 적용·점수 매김 → `candidate_score` + `candidate.status='scored'`.
-  3. Robin이 `/candidates`에서 점수 분포·평가 사유 확인 → 룰브릭/블록리스트/키워드 튜닝 피드백.
-- 첫 배치 규모: **15~20개**. 너무 적으면 분포가 안 보이고, 너무 많으면 이 채팅 컨텍스트가 통째로 데이터로 소진됨. 분포 본 뒤 회차 9에서 추가 배치.
-- 검증 기준: 어드민 `/candidates`에 점수+사유가 펼쳐지는 행 15~20개. 80↑ 후보가 1~5개 사이.
+**끝낸 것 (회차 8a — Discovery·Scorer dogfood 1라운드, 2026-05-24)**
+- **D34** 결정. discovery_run `e1518e7b-…` + candidate 15건 적재.
+- 룰브릭 직접 적용한 분포: 82점 1개 / 70~78 7개 / 65·50 2개 / 30 1개 / 15·10 4개. 소비재 OEM 4개를 룰브릭이 정확히 거름 (의도대로 작동).
+- 환경 한계 발견: WebFetch가 외부 사이트 거의 모두 403 — `dogfood-v1-search-snippets-only-2026-05` model_version으로 마감.
+- Vercel prod 별칭이 회차 5 브랜치(`claude/claude-md-docs-ViQmB`) 고정이라 새 페이지 안 보임 → `claude/next-task-UWacK` rebase·push → fast-forward로 prod 브랜치 갱신. 매직 링크 origin 통일.
+
+**다음 (회차 8b — 콘텐츠 1차 수집)**
+- **D35~D38** 결정 누적. 마이그레이션 0004:
+  - `document.candidate_id` 컬럼 추가 (seed FK는 nullable로, v0 미사용).
+  - `candidate.fetch_failed_count`, `candidate.next_attempt_after` (D36).
+  - `document.fetch_source` (D37 — wayback/jina/edge/rss/snippet).
+- 회차 8a 결과의 **점수 70↑ 8개 회사**가 대상: `taehwatech`(82), `hosungcnc`(78), `cyautotech`/`ddchemical`(75), `jakyung`(73), `future-eng`/`hankook-precisionworks`(72), `gpkorea`(70).
+- 회사당 about 1건 + press 1~2건 + blog 1~2건 = 약 30~40 document row 목표.
+- 우회 경로 D37 순서대로 시도 — 한 도메인당 1회만, 실패하면 다음 도메인으로 (D36).
+- 어드민에 회사 상세 페이지 (`/candidates/[id]` 또는 `/companies/[domain]`) — 수집된 콘텐츠 리스트 + 본문 미리보기.
 
 **보류 (Worker 배포 시점)**
-- `workers/discovery`·`workers/scorer` 코드는 동결 상태로 유지. Dogfood로 룰·키워드가 안정되면, Cloudflare 토큰 + Naver 키 + Anthropic 키 한꺼번에 발급해서 그때 배포.
-- 새 룰브릭 변화는 `SCORER_RUBRIC_VERSION` 상수만 바꾸면 Worker가 자동으로 새 버전으로 기록함.
+- D35 — Claude Code 직접 운영 모드를 v0 영구화. 워커 코드는 동결 상태로 유지.
+- 컨텍스트 한계 / 회사 100개 이상 누적 시 배포 재검토.
 
 ---
 
-## 8. 다음 에이전트 핸드오프 메모 (회차 7 → 8)
+## 8. 다음 에이전트 핸드오프 메모 (회차 8 진입 시점)
 
-- **현재 작업 브랜치**: `claude/next-task-UWacK`.
-- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 3개. Dogfood 라운드에서는 MCP `execute_sql` / `apply_migration`으로 직접 row 삽입.
-- **Dogfood 흐름 (회차 8)**:
-  1. `discovery_run` row 생성 (`query='dogfood-1', status='running'`)
-  2. WebSearch로 후보 발굴, `extractDomain`+`isBlockedDomain` 정신을 손으로 적용
-  3. `candidate` row insert (`discovery_run` FK, `domain` unique 제약 주의)
-  4. 각 후보 WebFetch → 본문에 D13 룰브릭 적용해서 `score` + `reasons{category_fit, clean_basics, over_branded, verdict}` 생성
-  5. `candidate_score` insert (`model_version='dogfood-claude-direct-v1'`) + `candidate.status='scored'` update
-  6. `discovery_run.status='ok'`, `finished_at`, `candidates_found` 마감
-- **읽는 순서**: PLAN.md → CLAUDE.md → `packages/ai/src/scorer.ts` (룰브릭 텍스트, 이 정신대로 직접 채점) → `packages/shared/src/blocklist.ts` (도메인 거름 기준) → `apps/admin/app/candidates/page.tsx` (Robin이 결과를 볼 화면).
-- **회차 9 첫 메시지 예시 (Robin)**: "분포 봤어, 키워드 X 빼고 Y 넣어." 또는 "이 후보 카테고리 부적합인데 점수가 50이야, 룰브릭 고쳐."
+- **현재 작업 브랜치**: `claude/next-task-UWacK`. Prod 별칭은 `claude/claude-md-docs-ViQmB`. 회차 push 시 rebase로 fast-forward 가능.
+- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 4개 예정 (0001~0003 적용됨, 0004 회차 8b에서 적용).
+- **회차 8b 흐름**:
+  1. 마이그레이션 0004 적용 (`document.candidate_id`, `candidate.fetch_*`, `document.fetch_source`).
+  2. 우회 경로 sanity check — Wayback Machine·Jina Reader가 이 환경에서 통과하는지 1~2 URL 테스트.
+  3. 70↑ 8개 회사 각각에 대해:
+     - WebSearch로 `site:<domain> 회사소개`, `site:<domain> 보도자료`, `site:<domain> 블로그`로 URL 후보 추출.
+     - 우회 경로 순서로 본문 fetch.
+     - `document` row 적재 (`doc_type=about/press/blog`, `fetch_source` 기록).
+     - 실패 시 `candidate.fetch_failed_count++`, 2회 누적이면 `next_attempt_after = now() + 14일`.
+  4. 어드민 회사 상세 페이지 추가.
+- **읽는 순서**: PLAN.md → CLAUDE.md → `supabase/migrations/0004*` → `packages/shared/src/blocklist.ts` → 어드민 회사 상세.
+- **회차 9 첫 메시지 예시 (Robin)**: "콘텐츠 충분히 모였다. 평가 기준은 X·Y·Z로 가자 (D38 결정)." 또는 "이 콘텐츠 부정확해, 우회 경로 N부터 시작하지 마."
 
 ---
 
 ## 현재 상태
-**회차 7 완료. 3주차 코드·DB는 ✅ 통과.** 회차 8 진입 = Dogfood 모드 (D34) — Claude가 직접 첫 라운드 데이터 적재.
+**회차 8a 완료** (Dogfood Discovery·Scorer 1라운드, 15 candidate). 회차 8b 진행 중 — 콘텐츠 수집 단계.

@@ -7,8 +7,14 @@ export default async function HomePage() {
   const supabase = await createSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const [{ count: candidateCount }, { count: runCount }, { data: latestRun }] = await Promise.all([
+  const [
+    { count: candidateCount },
+    { count: docCount },
+    { count: runCount },
+    { data: latestRun },
+  ] = await Promise.all([
     supabase.from("candidate").select("*", { count: "exact", head: true }),
+    supabase.from("document").select("*", { count: "exact", head: true }),
     supabase.from("discovery_run").select("*", { count: "exact", head: true }),
     supabase
       .from("discovery_run")
@@ -28,7 +34,7 @@ export default async function HomePage() {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-3">
         <Link
           href="/candidates"
           className="rounded-lg border border-zinc-200 bg-white p-6 transition hover:border-zinc-400"
@@ -36,6 +42,15 @@ export default async function HomePage() {
           <p className="text-xs uppercase tracking-widest text-zinc-500">후보 회사</p>
           <p className="mt-2 text-3xl font-semibold">{candidateCount ?? 0}</p>
           <p className="mt-1 text-xs text-zinc-500">Discovery가 발굴한 도메인 → 리스트 보기</p>
+        </Link>
+
+        <Link
+          href="/candidates"
+          className="rounded-lg border border-zinc-200 bg-white p-6 transition hover:border-zinc-400"
+        >
+          <p className="text-xs uppercase tracking-widest text-zinc-500">수집 콘텐츠</p>
+          <p className="mt-2 text-3xl font-semibold">{docCount ?? 0}</p>
+          <p className="mt-1 text-xs text-zinc-500">회사 about·press·blog (회사 카드에서 클릭)</p>
         </Link>
 
         <Link
