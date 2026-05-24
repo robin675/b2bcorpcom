@@ -35,8 +35,10 @@ pnpm-debug.log*
 supabase/.branches/
 supabase/.temp/
 
-# Generated types
+# Generated types — but packages/db/src/database.types.ts is hand-maintained
+# in v0 until `supabase gen types` is wired (see packages/db/README.md).
 **/database.types.ts
+!packages/db/src/database.types.ts
 
 # TypeScript incremental build info
 **/tsconfig.tsbuildinfo
