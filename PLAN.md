@@ -47,6 +47,8 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 | D21 | 5 | v0 Supabase 프로젝트: **신규 생성 `b2bcorpcom`** (id `ywbyjmnkospyvbsaaxqc`, 서울 리전, $10/월). 기존 `Slog` 프로젝트는 Robin이 대시보드에서 삭제 | Robin |
 | D22 | 5 | 어드민 허용 이메일: **`robin@vidfolio.kr`** 단일 (allowlist는 `public.config.admin_allowed_emails` 행에 적재) | Robin |
 | D23 | 5 | 어드민 배포처: **Vercel** (Claude가 MCP로 직접 배포 → Robin 손이 가장 덜 감, D15 정신). Cloudflare Pages 대신 채택 — OpenNext 어댑터 우회 가능 + Vercel CLI 없이 자동화 | Claude |
+| D24 | 5 | Next.js 버전은 **`^15.5.4` 이상으로 유지**. Vercel이 15.0.3 등 취약 버전을 빌드 단계에서 차단함 (`Vulnerable version detected`). 새 워크스페이스 만들 때도 이 floor 지킬 것 | Claude |
+| D25 | 5 | Vercel env vars는 **Production scope만 우선 설정**, `NEXT_PUBLIC_*`는 **Sensitive 토글 OFF** (build-time inlining 필요). Preview·Development는 v0에선 사용 안 함 | Claude |
 
 ---
 
@@ -120,21 +122,34 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 
 ## 7. 다음 회차에 할 일
 
-이 커밋 시점(2026-05-24, 회차 4) 기준으로 끝낸 것 / 다음에 할 것:
+**끝낸 것 (회차 5, 2026-05-24)**
+- Supabase 프로젝트 `b2bcorpcom` (id `ywbyjmnkospyvbsaaxqc`, 서울) 생성 + 9개 테이블 + RLS + `config.admin_allowed_emails` 행 적재.
+- Next.js 15.5 어드민 (`apps/admin/`): App Router, Supabase SSR Auth (`@supabase/ssr`), middleware로 미인증 → `/login` 리다이렉트, allowlist 통과 안 된 이메일은 `/forbidden`.
+- 어드민 Vercel 배포 (project `b2bcorpcom-admin`, prod alias `b2bcorpcom-admin.vercel.app`, GitHub auto-deploy from `claude/claude-md-docs-ViQmB`).
+- Robin이 `robin@vidfolio.kr`로 매직 링크 로그인 → 빈 대시보드 진입 확인 = **1주차 마일스톤 통과**.
+- 디버깅 회수한 함정 3개 (다음 회차 참고):
+  1. Vercel은 `Next.js` 취약 버전을 빌드 단계에서 강제 실패시킴 → D24.
+  2. Vercel 대시보드의 "Output Directory" Override는 vercel.json보다 우선됨 → 모노레포 import 직후 한 번 확인 필요.
+  3. Vercel UI에 단독 "Environment Variables" 메뉴는 없어졌고 Settings → Environments 안쪽 페이지에 통합됨. 다음 워크스페이스 import 때 헷갈리지 말 것.
 
-**끝낸 것 (이번 커밋)**
-- 모노레포 골격 (`apps/`, `workers/`, `packages/`, `supabase/`).
-- `PLAN.md`, `CLAUDE.md`, `README.md`.
-- Supabase 초기 마이그레이션 스케치 (테이블 구조 초안).
-- `pnpm-workspace.yaml`, 루트 `package.json`, `.gitignore`.
+**다음 (회차 6 — 2주차 Discovery Worker)**
+- **OQ2 결정**이 선행 조건. Robin이 Google CSE / Brave / Naver 중 하나 선택.
+- `workers/discovery/` 스캐폴드: Cloudflare Worker + Cron Trigger, `discovery_run` row 적재, `candidate` row 적재.
+- 검색 키워드는 `config` 테이블 row로 빼서 어드민 GUI에서 변경 가능하게 (§4.2 / D15).
+- 어드민에 "후보 회사 30~50개" 리스트 화면 추가.
+- 검증 기준: 어드민에서 후보 회사 N개가 score=null로 나열되어 있음.
 
-**다음 (회차 5 — 1주차 마일스톤 마무리)**
-- Next.js 어드민 골격 (App Router + Supabase Auth + 빈 라우팅).
-- 어드민 배포 (Cloudflare Pages or Vercel).
-- Supabase 프로젝트 생성 후 마이그레이션 적용, 타입 생성.
-- OQ2(검색 엔진) 결정.
+---
+
+## 8. 다음 에이전트 핸드오프 메모 (회차 5 → 6)
+
+- **현재 작업 브랜치**: `claude/claude-md-docs-ViQmB`. 회차 6는 같은 브랜치 이어가도 되고, `claude/discovery-worker` 같이 새 브랜치로 분기해도 됨.
+- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 테이블 9개 다 있음 (`config`, `discovery_run`, `candidate`, `candidate_score`, `seed`, `crawl_run`, `document`, `document_chunk`, `operator_feedback`). MCP `list_tables`로 확인 가능.
+- **Vercel 프로젝트**: `b2bcorpcom-admin` (id `prj_13u8VAiiuAn2UhuUfDjQuoZi6fk4`, team `team_LDDIdXS3s1ojSGVviqkOqAd8`). env vars 3개(`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `ADMIN_ALLOWED_EMAILS`)는 Production scope에 들어가 있음.
+- **읽는 순서**: PLAN.md(이 문서) → CLAUDE.md → `apps/admin/DEPLOY.md` → `supabase/migrations/` 최신 → `apps/admin/` 구조 훑기.
+- **회차 6 첫 메시지 예시 (Robin)**: "OQ2는 X로. Discovery Worker 시작해." → 그러면 D26로 기록하고 `workers/discovery/` 만들기 시작.
 
 ---
 
 ## 현재 상태
-**회차 4 (초기 스캐폴딩 커밋) 진행 중.** 다음 회차에 어드민 골격으로 진입.
+**회차 5 완료. 1주차 마일스톤 ✅ 통과.** 회차 6에서 OQ2 결정 후 Discovery Worker로 진입.
