@@ -1,0 +1,15 @@
+name = "b2bcorpcom-discovery"
+main = "src/index.ts"
+compatibility_date = "2024-11-06"
+compatibility_flags = ["nodejs_compat"]
+
+# Daily 04:00 KST = 19:00 UTC. See PLAN.md D28.
+[triggers]
+crons = ["0 19 * * *"]
+
+# Secrets (set via `wrangler secret put`):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   NAVER_CLIENT_ID
+#   NAVER_CLIENT_SECRET
+#   MANUAL_TRIGGER_TOKEN     # gate for POST /run

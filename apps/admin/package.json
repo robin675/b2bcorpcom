@@ -12,8 +12,10 @@
     "test": "echo 'no tests yet'"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.45.4",
+    "@b2bcorpcom/db": "workspace:*",
+    "@b2bcorpcom/shared": "workspace:*",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.1",
     "next": "^15.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

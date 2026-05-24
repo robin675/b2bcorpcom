@@ -2,10 +2,19 @@
   "name": "@b2bcorpcom/db",
   "version": "0.0.0",
   "private": true,
-  "description": "Supabase migrations entry point + generated TypeScript types.",
+  "description": "Supabase types for the v0 pipeline.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "gen-types": "echo 'TODO(week 1): supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/database.types.ts'",
-    "typecheck": "echo 'TODO(week 1): tsc --noEmit'",
+    "gen-types": "echo 'For now, types are hand-written in src/database.types.ts; refresh with the Supabase MCP generate_typescript_types tool.'",
+    "typecheck": "tsc --noEmit",
     "test": "echo 'no tests yet'"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
   }
 }
