@@ -1,0 +1,17 @@
+{
+  "name": "b2bcorpcom",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo for the b2bcorpcom v0 reference-content pipeline (temporary codename).",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@b2bcorpcom/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Supabase migrations entry point + generated TypeScript types.",
+  "scripts": {
+    "gen-types": "echo 'TODO(week 1): supabase gen types typescript --project-id $SUPABASE_PROJECT_ID > src/database.types.ts'",
+    "typecheck": "echo 'TODO(week 1): tsc --noEmit'",
+    "test": "echo 'no tests yet'"
+  }
+}

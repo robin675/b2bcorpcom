@@ -1,0 +1,13 @@
+{
+  "name": "@b2bcorpcom/worker-crawler",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Crawler Worker — fetches company-intro / press / blog posts from seed companies (respecting robots.txt).",
+  "scripts": {
+    "dev": "echo 'TODO(week 5): wrangler dev'",
+    "build": "echo 'TODO(week 5): wrangler build'",
+    "deploy": "echo 'TODO(week 5): wrangler deploy'",
+    "typecheck": "echo 'TODO(week 5): tsc --noEmit'",
+    "test": "echo 'no tests yet'"
+  }
+}

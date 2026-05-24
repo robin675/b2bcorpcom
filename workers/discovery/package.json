@@ -1,0 +1,13 @@
+{
+  "name": "@b2bcorpcom/worker-discovery",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Discovery Worker — finds candidate Korean mid-sized B2B manufacturer URLs via search APIs.",
+  "scripts": {
+    "dev": "echo 'TODO(week 2): wrangler dev'",
+    "build": "echo 'TODO(week 2): wrangler build'",
+    "deploy": "echo 'TODO(week 2): wrangler deploy'",
+    "typecheck": "echo 'TODO(week 2): tsc --noEmit'",
+    "test": "echo 'no tests yet'"
+  }
+}

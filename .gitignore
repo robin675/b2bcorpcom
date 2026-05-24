@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+.turbo/
+.wrangler/
+.vercel/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+.dev.vars
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code per-user settings
+.claude/settings.local.json
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Generated types
+**/database.types.ts

@@ -1,0 +1,13 @@
+{
+  "name": "@b2bcorpcom/admin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Operator-only admin dashboard (Next.js).",
+  "scripts": {
+    "dev": "echo 'TODO(week 1): add Next.js dev script'",
+    "build": "echo 'TODO(week 1): add Next.js build script'",
+    "typecheck": "echo 'TODO(week 1): tsc --noEmit'",
+    "lint": "echo 'TODO(week 1): next lint'",
+    "test": "echo 'no tests yet'"
+  }
+}
