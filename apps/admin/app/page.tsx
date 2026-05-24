@@ -83,7 +83,9 @@ export default async function HomePage() {
         )}
       </section>
 
-      <footer className="mt-10 text-xs text-zinc-500">
+      <footer className="mt-10 flex items-center gap-4 text-xs text-zinc-500">
+        <Link href="/account" className="underline hover:text-zinc-800">비밀번호 변경</Link>
+        <span className="text-zinc-300">·</span>
         <form action="/auth/sign-out" method="post">
           <button className="underline hover:text-zinc-800" type="submit">로그아웃</button>
         </form>
