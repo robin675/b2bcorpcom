@@ -37,3 +37,6 @@ supabase/.temp/
 
 # Generated types
 **/database.types.ts
+
+# TypeScript incremental build info
+**/tsconfig.tsbuildinfo
