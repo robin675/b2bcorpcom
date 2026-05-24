@@ -3,11 +3,22 @@
   "version": "0.0.0",
   "private": true,
   "description": "Scorer Worker — evaluates candidate companies for 'cleanly basic' onboard-media (PLAN.md D13).",
+  "type": "module",
   "scripts": {
-    "dev": "echo 'TODO(week 3): wrangler dev'",
-    "build": "echo 'TODO(week 3): wrangler build'",
-    "deploy": "echo 'TODO(week 3): wrangler deploy'",
-    "typecheck": "echo 'TODO(week 3): tsc --noEmit'",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
     "test": "echo 'no tests yet'"
+  },
+  "dependencies": {
+    "@b2bcorpcom/ai": "workspace:*",
+    "@b2bcorpcom/db": "workspace:*",
+    "@b2bcorpcom/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.106.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241106.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.86.0"
   }
 }
