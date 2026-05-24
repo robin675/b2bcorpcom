@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Bash(vercel whoami)",
+      "Bash(vercel --version)",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__list_deployments",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__get_deployment",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__get_deployment_build_logs",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__get_runtime_logs",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__get_project",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__list_teams",
+      "mcp__1d1cfa22-d375-45f6-842a-00aacbaef367__search_vercel_documentation",
+      "mcp__e8915893-0a1a-43ff-8c41-5cb18faf3420__list_projects",
+      "mcp__e8915893-0a1a-43ff-8c41-5cb18faf3420__get_project",
+      "mcp__e8915893-0a1a-43ff-8c41-5cb18faf3420__get_project_url",
+      "mcp__e8915893-0a1a-43ff-8c41-5cb18faf3420__get_publishable_keys",
+      "mcp__e8915893-0a1a-43ff-8c41-5cb18faf3420__get_cost",
+      "mcp__e8915893-0a1a-43ff-8c41-5cb18faf3420__list_tables",
+      "mcp__341e1297-bf10-48ab-bcbb-5729c71e038d__read_file_content"
+    ],
+    "deny": [
+      "Write(**/.env*)",
+      "Edit(**/.env*)",
+      "Read(**/.env*)"
+    ]
+  }
+}
