@@ -2,6 +2,8 @@
 
 Vercel CLI는 컨테이너에서 인증이 막혀서 Robin이 한 번만 대시보드에서 클릭해주셔야 합니다. 그 다음부터는 git push 할 때마다 자동 배포됩니다.
 
+> 주의: Vercel의 "Redeploy" 버튼은 옛 커밋·옛 설정을 그대로 재실행합니다. 설정을 바꿨다면 **새 커밋이 푸시될 때**까지 기다리거나 "Redeploy with new settings" 같은 옵션을 사용해야 합니다.
+
 ## 1. Vercel에 GitHub 레포 연결
 
 1. https://vercel.com/new → "Import Git Repository" → `robin675/b2bcorpcom` 선택
