@@ -57,6 +57,7 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 | D31 | 7 | Scorer 입력은 **홈페이지 텍스트 첫 6KB**로 한정 (`workers/scorer/src/extract.ts`). JS-only 사이트나 80자 미만 추출은 score=0(`verdict=빈 사이트/JS 렌더`)으로 마감해서 무한 재시도 방지 | Claude |
 | D32 | 7 | `candidate.status` 전이 규칙: `pending → scored`(평가 끝)/`scored`(fetch 실패도 동일, score=0). 모델·파싱 에러는 status 유지 → 다음 Cron이 재시도. Robin의 yes/no는 회차 8(주차 4)에서 `seed` 등록·`rejected`로 확장 | Claude |
 | D33 | 7 | Scorer 프롬프트 버전은 `SCORER_RUBRIC_VERSION` 상수로 관리, `candidate_score.model_version`에 기록 → 같은 후보를 새 룰로 재채점할 때 두 row가 공존하고 최신 row만 화면에 보임 | Claude |
+| D34 | 8 | **방향 전환 — Dogfood 모드.** Naver Developer 승인·Anthropic API 키·Cloudflare 토큰 등 외부 API 연결은 **모두 후순위**. 그 동안은 이 채팅의 Claude Code가 직접 Discovery·Scorer 역할을 수행 (WebSearch + WebFetch + Supabase MCP). v0 수집 파이프라인을 사람이 한 번 굴려보는 것이 우선이고, API 연결에 시간을 통째로 까먹지 않기 위함. 이미 만들어둔 워커 코드는 그대로 두고 데이터·룰브릭이 검증된 뒤에 배포 | Robin |
 
 ---
 
@@ -164,28 +165,35 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 - 어드민 `/candidates`: 점수 컬럼(색상 표시 — 80↑ 에메랄드, 50↑ 진한 회색, 그 미만 흐림) + `<details>`로 펼치는 4행 reasons(category_fit/clean_basics/over_branded/verdict).
 - 함정 메모: ESLint `react/no-unescaped-entities`가 한국어 큰따옴표를 막아서 `&ldquo;/&rdquo;`로 escape 필요.
 
-**다음 (회차 8 — 4주차 Seed Registry & 자동 채택)**
-- 선행: Robin이 Cloudflare Workers Token 발급 → `pnpm --filter @b2bcorpcom/worker-discovery deploy` 후 `wrangler secret put` 5종 + `worker-scorer`도 동일. 1라운드 자동 실행 결과로 점수 분포 확인.
-- 점수 임계점(OQ3 초기값) 결정 — 분포 보고 `config.seed_threshold` row 추가 후 어드민 `/config`에서 슬라이더로 조정.
-- Seed Registry 로직: Scorer 끝나면 임계점 이상 후보를 `seed` 테이블로 자동 promote (D14).
-- 어드민 새 화면: "이번 주 채택 시드" — `seed.registered_at` 최근 7일, yes/no 체크박스로 active 토글.
-- 검증 기준: Robin이 화면에서 시드 1개를 yes/no 한 번씩 클릭 → DB에 `active` 토글이 반영되고 다음 Discovery·Crawler 라운드에 영향.
+**다음 (회차 8 — Dogfood 1라운드)**
+- D34에 따라 Naver/Cloudflare/Anthropic 연결은 모두 후순위. 이 채팅의 Claude Code가 직접:
+  1. WebSearch로 키워드별 후보 도메인 발굴 → `discovery_run` + `candidate` row 적재 (Supabase MCP).
+  2. WebFetch로 각 후보 홈페이지 fetch → 이 자리에서 D13 룰브릭 적용·점수 매김 → `candidate_score` + `candidate.status='scored'`.
+  3. Robin이 `/candidates`에서 점수 분포·평가 사유 확인 → 룰브릭/블록리스트/키워드 튜닝 피드백.
+- 첫 배치 규모: **15~20개**. 너무 적으면 분포가 안 보이고, 너무 많으면 이 채팅 컨텍스트가 통째로 데이터로 소진됨. 분포 본 뒤 회차 9에서 추가 배치.
+- 검증 기준: 어드민 `/candidates`에 점수+사유가 펼쳐지는 행 15~20개. 80↑ 후보가 1~5개 사이.
+
+**보류 (Worker 배포 시점)**
+- `workers/discovery`·`workers/scorer` 코드는 동결 상태로 유지. Dogfood로 룰·키워드가 안정되면, Cloudflare 토큰 + Naver 키 + Anthropic 키 한꺼번에 발급해서 그때 배포.
+- 새 룰브릭 변화는 `SCORER_RUBRIC_VERSION` 상수만 바꾸면 Worker가 자동으로 새 버전으로 기록함.
 
 ---
 
 ## 8. 다음 에이전트 핸드오프 메모 (회차 7 → 8)
 
-- **현재 작업 브랜치**: `claude/next-task-UWacK`. 다음 회차도 동일 브랜치 가능 (또는 `claude/seed-registry`).
-- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 3개. 4주차에 `0004_seed_threshold_config.sql` 또는 status enum 마이그레이션 검토.
-- **Vercel 프로젝트**: `b2bcorpcom-admin` 그대로.
-- **Cloudflare Workers**: 코드 준비 완료, 배포·Secrets는 아직. Discovery·Scorer 둘 다 같은 `wrangler` 토큰으로 배포 가능. Secrets 셋:
-  - 둘 다: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `MANUAL_TRIGGER_TOKEN`
-  - Discovery 전용: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
-  - Scorer 전용: `ANTHROPIC_API_KEY`
-- **읽는 순서**: PLAN.md → CLAUDE.md → `supabase/migrations/` 최신 → `packages/ai/src/scorer.ts` (룰브릭) → `workers/scorer/src/pipeline.ts` → `apps/admin/app/candidates/page.tsx` (현재 UI) → 빈 곳: `workers/crawler/`.
-- **회차 8 첫 메시지 예시 (Robin)**: "점수 분포 확인했어. 임계점은 X로." 또는 "Seed 자동 채택 만들어줘."
+- **현재 작업 브랜치**: `claude/next-task-UWacK`.
+- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 3개. Dogfood 라운드에서는 MCP `execute_sql` / `apply_migration`으로 직접 row 삽입.
+- **Dogfood 흐름 (회차 8)**:
+  1. `discovery_run` row 생성 (`query='dogfood-1', status='running'`)
+  2. WebSearch로 후보 발굴, `extractDomain`+`isBlockedDomain` 정신을 손으로 적용
+  3. `candidate` row insert (`discovery_run` FK, `domain` unique 제약 주의)
+  4. 각 후보 WebFetch → 본문에 D13 룰브릭 적용해서 `score` + `reasons{category_fit, clean_basics, over_branded, verdict}` 생성
+  5. `candidate_score` insert (`model_version='dogfood-claude-direct-v1'`) + `candidate.status='scored'` update
+  6. `discovery_run.status='ok'`, `finished_at`, `candidates_found` 마감
+- **읽는 순서**: PLAN.md → CLAUDE.md → `packages/ai/src/scorer.ts` (룰브릭 텍스트, 이 정신대로 직접 채점) → `packages/shared/src/blocklist.ts` (도메인 거름 기준) → `apps/admin/app/candidates/page.tsx` (Robin이 결과를 볼 화면).
+- **회차 9 첫 메시지 예시 (Robin)**: "분포 봤어, 키워드 X 빼고 Y 넣어." 또는 "이 후보 카테고리 부적합인데 점수가 50이야, 룰브릭 고쳐."
 
 ---
 
 ## 현재 상태
-**회차 7 완료. 3주차 마일스톤 코드·DB는 ✅ 통과**, 실제 점수 분포 확인은 Cloudflare Workers 배포 + 1라운드 실행 후 회차 8 진입 직전에 마무리.
+**회차 7 완료. 3주차 코드·DB는 ✅ 통과.** 회차 8 진입 = Dogfood 모드 (D34) — Claude가 직접 첫 라운드 데이터 적재.
