@@ -1,0 +1,14 @@
+name = "b2bcorpcom-scorer"
+main = "src/index.ts"
+compatibility_date = "2024-11-06"
+compatibility_flags = ["nodejs_compat"]
+
+# Daily 04:30 KST = 19:30 UTC (runs ~30min after Discovery; see PLAN.md D30).
+[triggers]
+crons = ["30 19 * * *"]
+
+# Secrets (set via `wrangler secret put`):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   ANTHROPIC_API_KEY
+#   MANUAL_TRIGGER_TOKEN

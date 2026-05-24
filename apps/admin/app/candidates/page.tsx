@@ -5,6 +5,13 @@ export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 100;
 
+type Reasons = {
+  category_fit?: string;
+  clean_basics?: string;
+  over_branded?: string;
+  verdict?: string;
+};
+
 export default async function CandidatesPage() {
   const supabase = await createSupabaseServerClient();
 
@@ -14,17 +21,37 @@ export default async function CandidatesPage() {
     .order("discovered_at", { ascending: false })
     .limit(PAGE_SIZE);
 
+  const ids = (candidates ?? []).map((c) => c.id);
+  const { data: scores } = ids.length
+    ? await supabase
+        .from("candidate_score")
+        .select("candidate_id, score, reasons, evaluated_at")
+        .in("candidate_id", ids)
+        .order("evaluated_at", { ascending: false })
+    : { data: [] };
+
+  // Most-recent score per candidate (scores are already sorted desc by evaluated_at).
+  const scoreByCandidate = new Map<string, { score: number; reasons: Reasons }>();
+  for (const s of scores ?? []) {
+    if (!scoreByCandidate.has(s.candidate_id)) {
+      scoreByCandidate.set(s.candidate_id, {
+        score: Number(s.score),
+        reasons: (s.reasons ?? {}) as Reasons,
+      });
+    }
+  }
+
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
+    <main className="mx-auto max-w-6xl px-6 py-12">
       <nav className="mb-6 text-xs text-zinc-500">
         <Link href="/" className="underline hover:text-zinc-800">← 대시보드</Link>
       </nav>
 
       <header className="mb-8">
-        <p className="text-xs uppercase tracking-widest text-zinc-500">discovery</p>
+        <p className="text-xs uppercase tracking-widest text-zinc-500">discovery → scorer</p>
         <h1 className="mt-1 text-2xl font-semibold">후보 회사</h1>
         <p className="mt-1 text-sm text-zinc-600">
-          Discovery Worker가 Naver 검색에서 발굴한 도메인입니다. 점수(Scorer)는 3주차에 붙습니다 — 현재는 score=null.
+          Discovery가 발굴 → Scorer가 &ldquo;기초 깔끔 점수&rdquo; 평가 (D13). 80점 이상이 시드 채택 후보입니다.
         </p>
       </header>
 
@@ -57,42 +84,91 @@ export default async function CandidatesPage() {
                 <th className="px-4 py-2 font-medium">검색어</th>
                 <th className="px-4 py-2 font-medium">상태</th>
                 <th className="px-4 py-2 font-medium">점수</th>
+                <th className="px-4 py-2 font-medium">평가</th>
                 <th className="px-4 py-2 font-medium">발견 시각</th>
               </tr>
             </thead>
             <tbody>
-              {candidates.map((c) => (
-                <tr key={c.id} className="border-t border-zinc-100">
-                  <td className="px-4 py-2 font-mono text-xs">
-                    <a
-                      href={c.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-zinc-900 underline hover:text-zinc-600"
-                    >
-                      {c.domain}
-                    </a>
-                  </td>
-                  <td className="px-4 py-2 text-zinc-700">{c.display_name ?? "—"}</td>
-                  <td className="px-4 py-2 text-zinc-500">{c.search_query ?? "—"}</td>
-                  <td className="px-4 py-2">
-                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
-                      {c.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-zinc-400">null</td>
-                  <td className="px-4 py-2 text-zinc-500">
-                    {new Date(c.discovered_at).toLocaleString("ko-KR", {
-                      timeZone: "Asia/Seoul",
-                      year: "2-digit",
-                      month: "2-digit",
-                      day: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                </tr>
-              ))}
+              {candidates.map((c) => {
+                const s = scoreByCandidate.get(c.id);
+                return (
+                  <tr key={c.id} className="border-t border-zinc-100 align-top">
+                    <td className="px-4 py-2 font-mono text-xs">
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-zinc-900 underline hover:text-zinc-600"
+                      >
+                        {c.domain}
+                      </a>
+                    </td>
+                    <td className="px-4 py-2 text-zinc-700">{c.display_name ?? "—"}</td>
+                    <td className="px-4 py-2 text-zinc-500">{c.search_query ?? "—"}</td>
+                    <td className="px-4 py-2">
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700">
+                        {c.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      {s ? (
+                        <span
+                          className={
+                            s.score >= 80
+                              ? "font-semibold text-emerald-700"
+                              : s.score >= 50
+                                ? "text-zinc-700"
+                                : "text-zinc-400"
+                          }
+                        >
+                          {s.score}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-300">—</span>
+                      )}
+                    </td>
+                    <td className="max-w-md px-4 py-2 text-xs text-zinc-600">
+                      {s?.reasons.verdict ? (
+                        <details>
+                          <summary className="cursor-pointer">{s.reasons.verdict}</summary>
+                          <dl className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                            {s.reasons.category_fit && (
+                              <div>
+                                <dt className="inline font-medium">카테고리: </dt>
+                                <dd className="inline">{s.reasons.category_fit}</dd>
+                              </div>
+                            )}
+                            {s.reasons.clean_basics && (
+                              <div>
+                                <dt className="inline font-medium">기초: </dt>
+                                <dd className="inline">{s.reasons.clean_basics}</dd>
+                              </div>
+                            )}
+                            {s.reasons.over_branded && (
+                              <div>
+                                <dt className="inline font-medium">브랜딩: </dt>
+                                <dd className="inline">{s.reasons.over_branded}</dd>
+                              </div>
+                            )}
+                          </dl>
+                        </details>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-xs text-zinc-500">
+                      {new Date(c.discovered_at).toLocaleString("ko-KR", {
+                        timeZone: "Asia/Seoul",
+                        year: "2-digit",
+                        month: "2-digit",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

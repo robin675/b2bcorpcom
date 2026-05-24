@@ -60,7 +60,11 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
-  packages/ai: {}
+  packages/ai:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
 
   packages/db:
     devDependencies:
@@ -102,7 +106,30 @@ importers:
 
   workers/normalizer: {}
 
-  workers/scorer: {}
+  workers/scorer:
+    dependencies:
+      '@b2bcorpcom/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@b2bcorpcom/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@b2bcorpcom/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@supabase/supabase-js':
+        specifier: ^2.106.1
+        version: 2.106.1
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^4.20241106.0
+        version: 4.20260524.1
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      wrangler:
+        specifier: ^3.86.0
+        version: 3.114.17(@cloudflare/workers-types@4.20260524.1)
 
 packages:
 

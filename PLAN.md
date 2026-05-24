@@ -53,6 +53,10 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 | D27 | 6 | Discovery 운영 파라미터는 `config` 테이블 두 row로 분리: `discovery_keywords`(string[]) + `discovery_settings`(object: `max_results_per_query`, `search_engine`). 어드민 `/config`에서 GUI 편집 (D15) | Claude |
 | D28 | 6 | Discovery Worker Cron: **일 1회 한국시간 새벽 4시** (UTC `0 19 * * *`). 키워드 N개 × 쿼리당 최대 30건 → 도메인 dedup 후 `candidate` 적재. v0 시드 채집엔 일 1회면 충분, 호출 할당량도 여유 | Claude |
 | D29 | 6 | Discovery 결과 필터: **블로그·SNS·뉴스·쇼핑·채용 도메인 블록리스트**로 1차 거름 (`packages/shared/blocklist.ts`). "기초 깔끔 회사" 후보가 아닐 게 명확한 호스트만 거름 — 회색 영역은 Scorer가 처리 (D13) | Claude |
+| D30 | 7 | Scorer 모델 = **`claude-haiku-4-5-20251001`** (저비용·고속). Cron `30 19 * * *` (KST 04:30, Discovery 30분 뒤). 시스템 프롬프트는 **prompt caching(`cache_control: ephemeral`)** 으로 비용 절감 | Claude |
+| D31 | 7 | Scorer 입력은 **홈페이지 텍스트 첫 6KB**로 한정 (`workers/scorer/src/extract.ts`). JS-only 사이트나 80자 미만 추출은 score=0(`verdict=빈 사이트/JS 렌더`)으로 마감해서 무한 재시도 방지 | Claude |
+| D32 | 7 | `candidate.status` 전이 규칙: `pending → scored`(평가 끝)/`scored`(fetch 실패도 동일, score=0). 모델·파싱 에러는 status 유지 → 다음 Cron이 재시도. Robin의 yes/no는 회차 8(주차 4)에서 `seed` 등록·`rejected`로 확장 | Claude |
+| D33 | 7 | Scorer 프롬프트 버전은 `SCORER_RUBRIC_VERSION` 상수로 관리, `candidate_score.model_version`에 기록 → 같은 후보를 새 룰로 재채점할 때 두 row가 공존하고 최신 row만 화면에 보임 | Claude |
 
 ---
 
@@ -149,28 +153,39 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 - 의존성 함정 1건:
   - `@supabase/ssr@0.5.2`는 `supabase-js@2.106.x` 신규 dist 레이아웃과 호환 안 됨 (`dist/module/lib/types` 경로 부재 → Database generic이 `any/never`로 깨짐). 둘 다 최신(`ssr@^0.10.3`, `supabase-js@^2.106.1`)으로 핀.
 
-**다음 (회차 7 — 3주차 Scorer Worker)**
-- 선행: Robin이 Naver 개발자 센터에서 앱 등록 후 `NAVER_CLIENT_ID`/`SECRET`을 Cloudflare Workers Secret으로 넣고, Discovery Worker 1회 수동 실행 → `/candidates`에 30~50개 행 확인.
-- `workers/scorer/` Cloudflare Worker (Cron, Discovery 직후):
-  - `candidate` 중 `status='pending'` 미평가 분 가져옴.
-  - 후보 URL fetch → 본문 추출 → Claude API로 "기초만 깔끔 점수" 평가 (D13).
-  - `candidate_score` 적재 + `candidate.status='scored'`.
-- 어드민 `/candidates`에 점수·평가 사유 컬럼 추가.
-- 검증 기준: 후보별 점수(0~100)와 짧은 이유 1~2줄이 화면에 표시됨.
-- 후속 이슈 메모: `candidate.status`가 텍스트인데 enum이 더 안전 — 회차 7에서 마이그레이션 0004로 enum 검토.
+**끝낸 것 (회차 7, 2026-05-24)**
+- **D30~D33** 결정 누적.
+- `packages/ai/`: fetch 기반 Anthropic Messages 클라이언트 (`callClaude`) — prompt caching 옵션 포함. `scoreCandidate()`가 D13 룰브릭(시스템 프롬프트)으로 평가 → JSON 파싱·검증.
+- `workers/scorer/`: Cloudflare Worker (Cron `30 19 * * *`, KST 04:30).
+  - `candidate.status='pending'` 최대 50건 가져옴.
+  - 홈페이지 fetch (15초 timeout, KST UA) → 본문 6KB 추출 (`extract.ts`, script/style/comment 제거).
+  - Claude Haiku 4.5 호출 → `candidate_score` row 적재 + `candidate.status='scored'`.
+  - Fetch 실패는 score=0/`verdict=네트워크 메시지`로 마감, 모델 실패는 status 유지 → 다음 Cron 재시도.
+- 어드민 `/candidates`: 점수 컬럼(색상 표시 — 80↑ 에메랄드, 50↑ 진한 회색, 그 미만 흐림) + `<details>`로 펼치는 4행 reasons(category_fit/clean_basics/over_branded/verdict).
+- 함정 메모: ESLint `react/no-unescaped-entities`가 한국어 큰따옴표를 막아서 `&ldquo;/&rdquo;`로 escape 필요.
+
+**다음 (회차 8 — 4주차 Seed Registry & 자동 채택)**
+- 선행: Robin이 Cloudflare Workers Token 발급 → `pnpm --filter @b2bcorpcom/worker-discovery deploy` 후 `wrangler secret put` 5종 + `worker-scorer`도 동일. 1라운드 자동 실행 결과로 점수 분포 확인.
+- 점수 임계점(OQ3 초기값) 결정 — 분포 보고 `config.seed_threshold` row 추가 후 어드민 `/config`에서 슬라이더로 조정.
+- Seed Registry 로직: Scorer 끝나면 임계점 이상 후보를 `seed` 테이블로 자동 promote (D14).
+- 어드민 새 화면: "이번 주 채택 시드" — `seed.registered_at` 최근 7일, yes/no 체크박스로 active 토글.
+- 검증 기준: Robin이 화면에서 시드 1개를 yes/no 한 번씩 클릭 → DB에 `active` 토글이 반영되고 다음 Discovery·Crawler 라운드에 영향.
 
 ---
 
-## 8. 다음 에이전트 핸드오프 메모 (회차 6 → 7)
+## 8. 다음 에이전트 핸드오프 메모 (회차 7 → 8)
 
-- **현재 작업 브랜치**: `claude/next-task-UWacK`. 회차 7는 같은 브랜치 이어가도 되고 `claude/scorer-worker` 같이 새 브랜치로 분기 가능.
-- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 3개 적용 완료 (`0001`, `0002`, `0003`). MCP `list_tables` / `execute_sql`로 검증 가능.
-- **Vercel 프로젝트**: `b2bcorpcom-admin` (id `prj_13u8VAiiuAn2UhuUfDjQuoZi6fk4`, team `team_LDDIdXS3s1ojSGVviqkOqAd8`). 새 브랜치로 푸시되면 Vercel preview가 자동 생성, prod는 Robin이 promote.
-- **Cloudflare Workers**: 아직 배포 안 됨. `wrangler` 토큰을 Robin이 발급한 뒤 `pnpm --filter @b2bcorpcom/worker-discovery deploy`. 필요 Secret: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`, `MANUAL_TRIGGER_TOKEN`.
-- **읽는 순서**: PLAN.md → CLAUDE.md → `apps/admin/DEPLOY.md` → `supabase/migrations/0003*` → `workers/discovery/src/pipeline.ts` (검색 흐름) → `apps/admin/app/{candidates,config}/` → 스코어러 위치 (`workers/scorer/`, 빈 상태).
-- **회차 7 첫 메시지 예시 (Robin)**: "Naver 키 넣었어, 1회 돌려서 후보 채워봐 → 그다음 Scorer로." 또는 "OQ3(점수 임계점 초기값) 어떻게 잡을지부터 의논."
+- **현재 작업 브랜치**: `claude/next-task-UWacK`. 다음 회차도 동일 브랜치 가능 (또는 `claude/seed-registry`).
+- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 3개. 4주차에 `0004_seed_threshold_config.sql` 또는 status enum 마이그레이션 검토.
+- **Vercel 프로젝트**: `b2bcorpcom-admin` 그대로.
+- **Cloudflare Workers**: 코드 준비 완료, 배포·Secrets는 아직. Discovery·Scorer 둘 다 같은 `wrangler` 토큰으로 배포 가능. Secrets 셋:
+  - 둘 다: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `MANUAL_TRIGGER_TOKEN`
+  - Discovery 전용: `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`
+  - Scorer 전용: `ANTHROPIC_API_KEY`
+- **읽는 순서**: PLAN.md → CLAUDE.md → `supabase/migrations/` 최신 → `packages/ai/src/scorer.ts` (룰브릭) → `workers/scorer/src/pipeline.ts` → `apps/admin/app/candidates/page.tsx` (현재 UI) → 빈 곳: `workers/crawler/`.
+- **회차 8 첫 메시지 예시 (Robin)**: "점수 분포 확인했어. 임계점은 X로." 또는 "Seed 자동 채택 만들어줘."
 
 ---
 
 ## 현재 상태
-**회차 6 완료. 2주차 마일스톤 코드·DB는 ✅ 통과**, Naver 키 적용 + Worker 1회 실행으로 후보 30~50개 검증은 회차 7 진입 직전에 마무리 예정.
+**회차 7 완료. 3주차 마일스톤 코드·DB는 ✅ 통과**, 실제 점수 분포 확인은 Cloudflare Workers 배포 + 1라운드 실행 후 회차 8 진입 직전에 마무리.
