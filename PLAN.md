@@ -206,6 +206,20 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
   7. WebSearch가 인덱싱한 path가 사이트 현행과 다를 수 있음(`joungwoontech.co.kr/ko/...` 5건 모두 404). fetch 모드로 임의 URL 시도는 실패 시 fetch_failed_count 누적 위험 — discover 모드가 더 안전.
 - 회차 9 본 작업(D38·GUI·Vault)은 **회차 9b로 이월**. 데이터 양은 D38 결정 가능 수준에 도달.
 
+**끝낸 것 (회차 9c — 추가 크롤링 라운드 4·5, 2026-05-25)**
+- Robin "계속 하는 중이지?" 후속 — 더 다양한 니치로 후보 발굴 계속.
+- **Discovery 라운드 4 (WebSearch 시드 12건)** — `discovery_run='dogfood-r4-websearch-2026-05-25'`:
+  - 케이블/전선: `koryontc.com`(78), `micable.co.kr`(78), `shcable.co.kr`(72, http 재시도 성공)
+  - 단조·주조·열처리·소재: `koreaforging.co.kr`(78), `winco.co.kr`(74), `kci0512.com`(74), `ktht.co.kr`(70)
+  - 검사장비: `sdtron.co.kr`(75), `z-tec.co.kr`(65)
+  - 도료: `da.co.kr`(76)
+  - fetch 실패 2건: `hanil83.co.kr`(JS 렌더), `mcvision.co.kr`(JS 렌더)
+- **Discovery 라운드 5 (WebSearch 시드 4건)** — `discovery_run='dogfood-r5-websearch-2026-05-25'`:
+  - LED 조명: `shtek.co.kr`(75), `ezlighting.co.kr`(65), `khyun.co.kr`(60), `lfine.co.kr`(50). 모두 fetch 성공.
+- **결과**: candidate 42→**58** (신규 16), document 127→**186** (신규 +59, about 109 / press 41 / blog 36). 70↑ + docs 동반 회사 **27개**. 4·5 모두 status=scored.
+- 패턴 메모 추가:
+  8. https HandshakeFailure 사이트도 `scheme:"http"` 옵션으로 깨끗히 살려낼 수 있음 — server-side redirect가 없는 경우에 한해 (shcable.co.kr 성공, filtech처럼 http→https 강제 redirect하는 사이트는 여전히 실패).
+
 **다음 (회차 9b — 회차 9 본 작업 재개)**
 - 선행: Robin이 어드민 `/candidates/[id]` 들어가서 about/press/blog 본문 샘플 보고 **D38(콘텐츠 평가 기준) 결정**. 데이터 양은 충분(127건).
 - Edge Function 보안: Vault에 `CRAWL_TOKEN` 저장 → 함수에서 `x-crawl-token` 검증.
@@ -239,13 +253,13 @@ select id, status_code, left(content, 400) from net._http_response where id = <r
 ```
 모드 `fetch` (URL 리스트 직접) / `discover` (도메인 → 자동 분류) 둘 다 사용 가능.
 
-### 데이터 상태 (회차 9a 직후)
-- candidate **42건** (전부 status=scored). discovery_run 3개(round 1 Naver-dogfood / round 2·3 WebSearch).
-- candidate_score 42건. model_version 3종 (`dogfood-v1-search-snippets-only-2026-05` / `dogfood-r2-2026-05-25` / `dogfood-r3-2026-05-25`).
-- document **127건**, doc_type 약 about 74 / press 27 / blog 26.
-- 70↑ 점수 + docs 동반 회사 **17개** (D38 결정 가능 분량).
-- fetch_failed_count ≥ 1 회사 **10개** (JS 렌더 7 + TLS/403 3): `dicorp.co.kr` `haewonvalve.co.kr` `k-ktech.co.kr` `dsfinetec.com` `kwanglim21.co.kr` `shenp.co.kr` `tzfilter.co.kr` `sgoilless.co.kr` `filtech.co.kr` `hankook-precisionworks.com`(2회 누적 + 14일 backoff).
-- 점수 30↓ 5개 (`dhb2b`/`worldchem`/`innp`/`odortech`/`keih`)는 카테고리 부적합, 회차 9b에서 reject 처리 후보. 점수 40~50 유통상사 4개(`mjchemical`/`sungshinmotor`/`motor-line`/`samicksys`)도 reject 또는 별도 카테고리 후보.
+### 데이터 상태 (회차 9c 직후)
+- candidate **58건** (전부 status=scored). discovery_run 5개(round 1 Naver-dogfood / round 2~5 WebSearch).
+- candidate_score 58건. model_version 5종 (`dogfood-v1-search-snippets-only-2026-05` + `dogfood-r2/r3/r4/r5-2026-05-25`).
+- document **186건**, doc_type 약 about 109 / press 41 / blog 36.
+- 70↑ 점수 + docs 동반 회사 **27개** (D38 결정 가능 분량 충분).
+- fetch_failed_count ≥ 1 회사 **12개** (JS 렌더 9 + TLS/403 3): `dicorp.co.kr` `haewonvalve.co.kr` `k-ktech.co.kr` `dsfinetec.com` `kwanglim21.co.kr` `shenp.co.kr` `tzfilter.co.kr` `hanil83.co.kr` `mcvision.co.kr` `sgoilless.co.kr` `filtech.co.kr` `hankook-precisionworks.com`(2회 누적 + 14일 backoff).
+- 점수 30↓ 5개 (`dhb2b`/`worldchem`/`innp`/`odortech`/`keih`)는 카테고리 부적합, 회차 9b에서 reject 처리 후보. 점수 40~50 유통상사 5개(`mjchemical`/`sungshinmotor`/`motor-line`/`samicksys`/`lfine`)도 reject 또는 별도 카테고리 후보.
 
 ### 읽는 순서
 1. `PLAN.md` (이 문서)
@@ -264,4 +278,4 @@ select id, status_code, left(content, 400) from net._http_response where id = <r
 ---
 
 ## 현재 상태
-**회차 9a 완료.** 콘텐츠 크롤링 확장 라운드 2·3 (WebSearch 시드 27건 + 갭 fill) → candidate 15→42, document 20→**127**, 70↑ + docs 17개. 회차 9b는 보류된 D38·GUI·Vault 작업.
+**회차 9c 완료.** 콘텐츠 크롤링 확장 라운드 2~5 누적 (WebSearch 시드 43건 + 갭 fill) → candidate 15→**58**, document 20→**186**, 70↑ + docs **27개**. 회차 9b는 보류된 D38·GUI·Vault 작업.
