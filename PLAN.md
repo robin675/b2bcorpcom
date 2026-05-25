@@ -175,39 +175,75 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 - 환경 한계 발견: WebFetch가 외부 사이트 거의 모두 403 — `dogfood-v1-search-snippets-only-2026-05` model_version으로 마감.
 - Vercel prod 별칭이 회차 5 브랜치(`claude/claude-md-docs-ViQmB`) 고정이라 새 페이지 안 보임 → `claude/next-task-UWacK` rebase·push → fast-forward로 prod 브랜치 갱신. 매직 링크 origin 통일.
 
-**다음 (회차 8b — 콘텐츠 1차 수집)**
-- **D35~D38** 결정 누적. 마이그레이션 0004:
-  - `document.candidate_id` 컬럼 추가 (seed FK는 nullable로, v0 미사용).
-  - `candidate.fetch_failed_count`, `candidate.next_attempt_after` (D36).
-  - `document.fetch_source` (D37 — wayback/jina/edge/rss/snippet).
-- 회차 8a 결과의 **점수 70↑ 8개 회사**가 대상: `taehwatech`(82), `hosungcnc`(78), `cyautotech`/`ddchemical`(75), `jakyung`(73), `future-eng`/`hankook-precisionworks`(72), `gpkorea`(70).
-- 회사당 about 1건 + press 1~2건 + blog 1~2건 = 약 30~40 document row 목표.
-- 우회 경로 D37 순서대로 시도 — 한 도메인당 1회만, 실패하면 다음 도메인으로 (D36).
-- 어드민에 회사 상세 페이지 (`/candidates/[id]` 또는 `/companies/[domain]`) — 수집된 콘텐츠 리스트 + 본문 미리보기.
+**끝낸 것 (회차 8b — 콘텐츠 1차 수집 + 로그인 UX, 2026-05-25)**
+- **D35~D38** 결정 누적. 마이그레이션 0004 적용 (`document.candidate_id`, `candidate.fetch_failed_count`/`next_attempt_after`, `document.fetch_source`).
+- `pg_net` extension 활성화.
+- Supabase Edge Function `crawl-fetch` (v4) 배포 — `mode: "fetch"` + `mode: "discover"` (홈페이지 fetch → 내부 `<a href>` 분류 → about/press/blog 자동 추출). **https → http 자동 fallback** (한국 SMB B2B의 TLS 만료·도메인 mismatch 회수). datacenter IP fetch가 이 채팅 환경의 외부 allowlist 우회 — D37 ③ 경로가 사실상 v0 유일한 작동 경로.
+- pg_net 호출 → Edge Function → DB 적재 흐름 검증. 70↑ 8개 회사 중 **7개 적재 성공, 20 document row** (about 12 / press 4 / blog 4). hankook-precisionworks.com은 https/http 모두 timeout → D36 따라 `next_attempt_after = now() + 14일`로 자동 backoff.
+- 어드민 신규 화면: `/candidates/[id]` (점수·평가 사유·콘텐츠 그룹·본문 1500자 미리보기·fetch-state 카드). `/candidates` 리스트에 콘텐츠 카운트 컬럼 + 도메인 클릭 시 상세로. 홈에 콘텐츠 카운트 카드.
+- **로그인 마찰 제거** (Robin 피드백): `/login`을 비밀번호 폼 기본으로, 이메일 prefill+readonly, 매직 링크는 fallback. `/account` 페이지 (비밀번호 설정/변경). 매직 링크 callback → `/account?first=1`로 강제. Robin 비밀번호는 SQL로 직접 set (`unknownpw1001`).
+- 함정 메모:
+  1. WebFetch가 환경에서 모든 외부 URL 403 (Wayback·Jina까지). D37 ①·②는 봉인. ③ Edge Function이 v0 유일한 fetch 경로.
+  2. pg_net의 `http_post`는 트랜잭션 안에서 raise exception 발생 시 큐 entry rollback — DO block로 폴링하다 timeout raise하면 요청이 사라짐. fire-and-forget + 별도 SELECT 폴링이 정답.
+  3. `document` unique constraint가 `(seed_id, content_hash)`인데 `seed_id` 가 null이면 enforce 안 됨. 같은 candidate에 같은 내용 중복 적재 가능 — 다음 마이그레이션에서 `(candidate_id, content_hash)` partial unique 추가 검토.
+  4. Edge Function 무인증 (`verify_jwt: false`, token 체크 없음). URL 공개되면 DDoS amplifier 위험. **회차 9 우선 처리** — Supabase Vault에 `CRAWL_TOKEN` 저장 후 함수에서 검증.
 
-**보류 (Worker 배포 시점)**
-- D35 — Claude Code 직접 운영 모드를 v0 영구화. 워커 코드는 동결 상태로 유지.
-- 컨텍스트 한계 / 회사 100개 이상 누적 시 배포 재검토.
+**다음 (회차 9 — 운영 파라미터 GUI + 패턴 교정 + D38 결정)**
+- 선행: Robin이 어드민 `/candidates/[id]` 들어가서 about/press/blog 본문 샘플 보고 **D38(콘텐츠 평가 기준) 결정**. 길이·톤·시의성 기준이 데이터 위에서 정해짐.
+- Edge Function 보안: Vault에 `CRAWL_TOKEN` 저장 → 함수에서 `x-crawl-token` 검증.
+- `operator_feedback` 흐름 구현:
+  - `/candidates/[id]` 에 "거름 (rejected)" / "유지 (accepted)" 버튼 → `operator_feedback` 적재 + `candidate.status` 갱신.
+  - 다음 Discovery 라운드에서 `reject_pattern`/`keyword_remove` 읽어 룰브릭에 반영.
+- 운영 파라미터 GUI 확장: `/config`에 블록리스트·점수 임계점(OQ3)·크롤 빈도 추가.
+- 데이터 양 늘리기 (선택): Discovery 라운드 2 — 추가 키워드로 30~50개 후보 + 콘텐츠 fetch.
+- 회차 9 검증 기준: Robin이 코드 안 만지고 어드민에서 키워드 추가·후보 거르기·콘텐츠 평가 기준 입력 가능.
 
 ---
 
-## 8. 다음 에이전트 핸드오프 메모 (회차 8 진입 시점)
+## 8. 다음 에이전트 핸드오프 메모 (회차 8b → 9)
 
-- **현재 작업 브랜치**: `claude/next-task-UWacK`. Prod 별칭은 `claude/claude-md-docs-ViQmB`. 회차 push 시 rebase로 fast-forward 가능.
-- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`. 마이그레이션 4개 예정 (0001~0003 적용됨, 0004 회차 8b에서 적용).
-- **회차 8b 흐름**:
-  1. 마이그레이션 0004 적용 (`document.candidate_id`, `candidate.fetch_*`, `document.fetch_source`).
-  2. 우회 경로 sanity check — Wayback Machine·Jina Reader가 이 환경에서 통과하는지 1~2 URL 테스트.
-  3. 70↑ 8개 회사 각각에 대해:
-     - WebSearch로 `site:<domain> 회사소개`, `site:<domain> 보도자료`, `site:<domain> 블로그`로 URL 후보 추출.
-     - 우회 경로 순서로 본문 fetch.
-     - `document` row 적재 (`doc_type=about/press/blog`, `fetch_source` 기록).
-     - 실패 시 `candidate.fetch_failed_count++`, 2회 누적이면 `next_attempt_after = now() + 14일`.
-  4. 어드민 회사 상세 페이지 추가.
-- **읽는 순서**: PLAN.md → CLAUDE.md → `supabase/migrations/0004*` → `packages/shared/src/blocklist.ts` → 어드민 회사 상세.
-- **회차 9 첫 메시지 예시 (Robin)**: "콘텐츠 충분히 모였다. 평가 기준은 X·Y·Z로 가자 (D38 결정)." 또는 "이 콘텐츠 부정확해, 우회 경로 N부터 시작하지 마."
+### 즉시 알아야 할 환경 상태
+- **Git 작업 브랜치**: `claude/claude-md-docs-ViQmB` (= Vercel prod 브랜치). Push하면 자동 prod 배포. `claude/next-task-UWacK` 브랜치는 회차 8a 시점에서 멈춰 있으니 다시 쓰지 말 것.
+- **Vercel prod URL**: `https://b2bcorpcom-admin.vercel.app`. 매직 링크 origin 통일됐고, 비밀번호 로그인 가능 (이메일 prefill).
+- **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`, 서울 리전. 마이그레이션 4개 적용 + `pg_net`·`http`(미설치)·`pgcrypto`·`vector`·`supabase_vault` 사용 가능.
+- **Edge Function**: `crawl-fetch` (v4) 배포 상태. **무인증 — 회차 9에서 vault 토큰 추가 필수.** URL: `https://ywbyjmnkospyvbsaaxqc.supabase.co/functions/v1/crawl-fetch`.
+
+### 회차 9 작업 호출 패턴 — Edge Function via pg_net
+```sql
+-- Fire (do NOT wrap in DO block with raise — rollback risk)
+select net.http_post(
+  url := 'https://ywbyjmnkospyvbsaaxqc.supabase.co/functions/v1/crawl-fetch',
+  body := jsonb_build_object('mode','discover','candidate_id', '<uuid>', 'domain', '<host>', 'max_per_type', 2),
+  headers := '{"content-type":"application/json"}'::jsonb,
+  timeout_milliseconds := 90000
+);
+-- Poll after ~30~60s
+select id, status_code, left(content, 400) from net._http_response where id = <req_id>;
+```
+모드 `fetch` (URL 리스트 직접) / `discover` (도메인 → 자동 분류) 둘 다 사용 가능.
+
+### 데이터 상태 (회차 8b 직후)
+- candidate 15건 (전부 status=scored).
+- candidate_score 15건 (`model_version='dogfood-v1-search-snippets-only-2026-05'`).
+- document 20건 (회사 7개 분포, 1개 14일 backoff).
+- 70↑ 회사 8개 중 7개 콘텐츠 있음. `hankook-precisionworks.com` 만 비어있음(backoff).
+- 점수 30↓ 5개 (`dhb2b`/`worldchem`/`innp`/`odortech`/`keih`)는 카테고리 부적합, 회차 9에서 reject 처리 후보.
+
+### 읽는 순서
+1. `PLAN.md` (이 문서)
+2. `CLAUDE.md`
+3. `supabase/migrations/0004_content_layer.sql` (콘텐츠 레이어 스키마)
+4. `apps/admin/app/candidates/[id]/page.tsx` (Robin이 콘텐츠 보는 화면)
+5. `apps/admin/app/login/*` + `app/account/*` (인증 흐름 — 회차 9에서 보안 강화 시 참고)
+6. **Edge Function 소스 — 레포 외부**: Supabase 대시보드 / MCP `get_edge_function`으로 조회. `crawl-fetch/index.ts` 파일은 v0 인 tree에 두지 않음 (스키마/배포 일치 유지가 더 중요).
+
+### 회차 9 첫 메시지 후보 (Robin)
+- "콘텐츠 본문 봤어. 평가 기준은 X로 가자." → D38 확정 후 콘텐츠 점수 마이그레이션.
+- "Edge Function 토큰 보안 먼저 해줘." → vault 적용.
+- "후보 더 모아 — 키워드 Y, Z 추가." → Discovery 라운드 2.
+- "5개 카테고리 부적합 한 번에 거름 처리해." → reject UI.
 
 ---
 
 ## 현재 상태
-**회차 8a 완료** (Dogfood Discovery·Scorer 1라운드, 15 candidate). 회차 8b 진행 중 — 콘텐츠 수집 단계.
+**회차 8b 완료.** Dogfood 콘텐츠 1차 수집(20 docs) + Edge Function 우회 fetch + 비밀번호 로그인 UX 정착. 회차 9는 Robin의 D38 결정 + 어드민 검수 UI + Edge Function 보안.
