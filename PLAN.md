@@ -188,15 +188,32 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
   3. `document` unique constraint가 `(seed_id, content_hash)`인데 `seed_id` 가 null이면 enforce 안 됨. 같은 candidate에 같은 내용 중복 적재 가능 — 다음 마이그레이션에서 `(candidate_id, content_hash)` partial unique 추가 검토.
   4. Edge Function 무인증 (`verify_jwt: false`, token 체크 없음). URL 공개되면 DDoS amplifier 위험. **회차 9 우선 처리** — Supabase Vault에 `CRAWL_TOKEN` 저장 후 함수에서 검증.
 
-**다음 (회차 9 — 운영 파라미터 GUI + 패턴 교정 + D38 결정)**
-- 선행: Robin이 어드민 `/candidates/[id]` 들어가서 about/press/blog 본문 샘플 보고 **D38(콘텐츠 평가 기준) 결정**. 길이·톤·시의성 기준이 데이터 위에서 정해짐.
+**끝낸 것 (회차 9a — 콘텐츠 크롤링 확장 라운드 2·3, 2026-05-25)**
+- Robin 지시: "추가콘텐츠 충분하지 않다. 계속해서 크롤링 작업이 진행될 수 있도록 하라." → 회차 9의 D38/GUI/보안 우선 작업은 **잠시 보류**, 데이터 양 늘리기 축에 집중.
+- **회차 8b 갭 메우기** (max_per_type=3 재 discover):
+  - 70+ 점수인데 0 docs였던 `joungwoontech.co.kr` / 50점 `sinhwamc.co.kr` → 7건 신규
+  - `future-eng.com` 4→10, `ddchemical.co.kr` 3→7, `cyautotech.co.kr` 2→5 등 sparse 회사 보강.
+- **Discovery 라운드 2 (WebSearch 시드 17건)** — `discovery_run='dogfood-r2-websearch-2026-05-25'`:
+  - 신규 후보: `daeguntech.com`(82), `jei3.co.kr`(80), `wbc-bearing.co.kr`(80), `dylboiler.co.kr`(78), `koreard.co.kr`(78), `pkvalve.co.kr`(76), `gmp.co.kr`(72), `daehan-at.co.kr`(68), `sookook.co.kr`(62), `gbpkorea.co.kr`(50), `mjchemical.co.kr`/`sungshinmotor.co.kr`/`motor-line.co.kr`(40~45, 대리점/유통상사 패턴).
+  - fetch 실패 5건: `dicorp.co.kr` / `haewonvalve.co.kr` / `k-ktech.co.kr` (JS 렌더), `sgoilless.co.kr` (HTTP 403), 그리고 `filtech.co.kr`(라운드3, TLS UnknownIssuer + http→https 강제 redirect).
+- **Discovery 라운드 3 (WebSearch 시드 10건)** — `discovery_run='dogfood-r3-websearch-2026-05-25'`:
+  - 신규 후보: `philtec.co.kr`(80, 1996 창업 펌프 제조), `cfiltec.com`(75), `yeileng.co.kr`(75), `cands.co.kr`(62), `samicksys.co.kr`(45, 유통상사).
+  - fetch 실패 4건: `dsfinetec.com`/`kwanglim21.co.kr`/`shenp.co.kr`/`tzfilter.co.kr` (모두 JS 렌더 의심, 본문 < 120자).
+- **결과**: candidate 15→**42** (신규 27), document 20→**127** (신규 +107, doc_type 분포 about 74 / press 27 / blog 26로 균형 회복). 70↑ 점수 + docs 동반 회사 **17개**.
+- **새 패턴 메모** (회차 8b 함정 #1·#2와 별개):
+  5. Edge Function의 about/press/blog 링크 분류기가 일부 사이트(`taehwatech.com`/`hosungcnc.com`/`joungwoontech.co.kr`)의 홈페이지에서 anchor 텍스트나 path 패턴을 인식 못해 home 1건만 적재. SPA·이미지 nav 사이트로 추정. 회차 10+에서 sitemap.xml 보조 경로 검토.
+  6. http→https로 server-side redirect하면 `scheme: "http"` 옵션을 줘도 결국 https TLS 검증에 막힘(`filtech.co.kr`). Edge Function에서 redirect 시 cert 무시 옵션이 없음. 회차 10에서 fetch 라이브러리 옵션 확장 검토.
+  7. WebSearch가 인덱싱한 path가 사이트 현행과 다를 수 있음(`joungwoontech.co.kr/ko/...` 5건 모두 404). fetch 모드로 임의 URL 시도는 실패 시 fetch_failed_count 누적 위험 — discover 모드가 더 안전.
+- 회차 9 본 작업(D38·GUI·Vault)은 **회차 9b로 이월**. 데이터 양은 D38 결정 가능 수준에 도달.
+
+**다음 (회차 9b — 회차 9 본 작업 재개)**
+- 선행: Robin이 어드민 `/candidates/[id]` 들어가서 about/press/blog 본문 샘플 보고 **D38(콘텐츠 평가 기준) 결정**. 데이터 양은 충분(127건).
 - Edge Function 보안: Vault에 `CRAWL_TOKEN` 저장 → 함수에서 `x-crawl-token` 검증.
 - `operator_feedback` 흐름 구현:
   - `/candidates/[id]` 에 "거름 (rejected)" / "유지 (accepted)" 버튼 → `operator_feedback` 적재 + `candidate.status` 갱신.
   - 다음 Discovery 라운드에서 `reject_pattern`/`keyword_remove` 읽어 룰브릭에 반영.
 - 운영 파라미터 GUI 확장: `/config`에 블록리스트·점수 임계점(OQ3)·크롤 빈도 추가.
-- 데이터 양 늘리기 (선택): Discovery 라운드 2 — 추가 키워드로 30~50개 후보 + 콘텐츠 fetch.
-- 회차 9 검증 기준: Robin이 코드 안 만지고 어드민에서 키워드 추가·후보 거르기·콘텐츠 평가 기준 입력 가능.
+- 회차 9b 검증 기준: Robin이 코드 안 만지고 어드민에서 키워드 추가·후보 거르기·콘텐츠 평가 기준 입력 가능.
 
 ---
 
@@ -222,12 +239,13 @@ select id, status_code, left(content, 400) from net._http_response where id = <r
 ```
 모드 `fetch` (URL 리스트 직접) / `discover` (도메인 → 자동 분류) 둘 다 사용 가능.
 
-### 데이터 상태 (회차 8b 직후)
-- candidate 15건 (전부 status=scored).
-- candidate_score 15건 (`model_version='dogfood-v1-search-snippets-only-2026-05'`).
-- document 20건 (회사 7개 분포, 1개 14일 backoff).
-- 70↑ 회사 8개 중 7개 콘텐츠 있음. `hankook-precisionworks.com` 만 비어있음(backoff).
-- 점수 30↓ 5개 (`dhb2b`/`worldchem`/`innp`/`odortech`/`keih`)는 카테고리 부적합, 회차 9에서 reject 처리 후보.
+### 데이터 상태 (회차 9a 직후)
+- candidate **42건** (전부 status=scored). discovery_run 3개(round 1 Naver-dogfood / round 2·3 WebSearch).
+- candidate_score 42건. model_version 3종 (`dogfood-v1-search-snippets-only-2026-05` / `dogfood-r2-2026-05-25` / `dogfood-r3-2026-05-25`).
+- document **127건**, doc_type 약 about 74 / press 27 / blog 26.
+- 70↑ 점수 + docs 동반 회사 **17개** (D38 결정 가능 분량).
+- fetch_failed_count ≥ 1 회사 **10개** (JS 렌더 7 + TLS/403 3): `dicorp.co.kr` `haewonvalve.co.kr` `k-ktech.co.kr` `dsfinetec.com` `kwanglim21.co.kr` `shenp.co.kr` `tzfilter.co.kr` `sgoilless.co.kr` `filtech.co.kr` `hankook-precisionworks.com`(2회 누적 + 14일 backoff).
+- 점수 30↓ 5개 (`dhb2b`/`worldchem`/`innp`/`odortech`/`keih`)는 카테고리 부적합, 회차 9b에서 reject 처리 후보. 점수 40~50 유통상사 4개(`mjchemical`/`sungshinmotor`/`motor-line`/`samicksys`)도 reject 또는 별도 카테고리 후보.
 
 ### 읽는 순서
 1. `PLAN.md` (이 문서)
@@ -246,4 +264,4 @@ select id, status_code, left(content, 400) from net._http_response where id = <r
 ---
 
 ## 현재 상태
-**회차 8b 완료.** Dogfood 콘텐츠 1차 수집(20 docs) + Edge Function 우회 fetch + 비밀번호 로그인 UX 정착. 회차 9는 Robin의 D38 결정 + 어드민 검수 UI + Edge Function 보안.
+**회차 9a 완료.** 콘텐츠 크롤링 확장 라운드 2·3 (WebSearch 시드 27건 + 갭 fill) → candidate 15→42, document 20→**127**, 70↑ + docs 17개. 회차 9b는 보류된 D38·GUI·Vault 작업.
