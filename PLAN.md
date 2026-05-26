@@ -231,27 +231,35 @@ Robin은 1인 개발·운영자로, 한국 중견 B2B 제조 기업을 타깃으
 
 ---
 
-## 8. 다음 에이전트 핸드오프 메모 (회차 8b → 9)
+## 8. 다음 에이전트 핸드오프 메모 (회차 9c → 9b)
 
 ### 즉시 알아야 할 환경 상태
-- **Git 작업 브랜치**: `claude/claude-md-docs-ViQmB` (= Vercel prod 브랜치). Push하면 자동 prod 배포. `claude/next-task-UWacK` 브랜치는 회차 8a 시점에서 멈춰 있으니 다시 쓰지 말 것.
+- **이번 세션 작업 브랜치**: `claude/content-crawling-expansion-S8F2r` — 회차 9a·9c 누적, 푸시 완료(commits `4fe1687`, `6c66db4`). **PLAN.md 외 코드 변경 없음** — 데이터만 늘었다.
+- **Vercel prod 브랜치**: `claude/claude-md-docs-ViQmB`. 회차 9a·9c PLAN.md는 prod 브랜치에 머지되지 않았지만, 어드민 화면은 Supabase에서 직접 읽으므로 새 58 candidate / 186 docs는 prod URL에서 바로 보임 — 별도 배포 불필요.
 - **Vercel prod URL**: `https://b2bcorpcom-admin.vercel.app`. 매직 링크 origin 통일됐고, 비밀번호 로그인 가능 (이메일 prefill).
 - **Supabase 프로젝트**: id `ywbyjmnkospyvbsaaxqc`, 서울 리전. 마이그레이션 4개 적용 + `pg_net`·`http`(미설치)·`pgcrypto`·`vector`·`supabase_vault` 사용 가능.
-- **Edge Function**: `crawl-fetch` (v4) 배포 상태. **무인증 — 회차 9에서 vault 토큰 추가 필수.** URL: `https://ywbyjmnkospyvbsaaxqc.supabase.co/functions/v1/crawl-fetch`.
+- **Edge Function**: `crawl-fetch` (v4) 배포 상태. **무인증 — 회차 9b에서 vault 토큰 추가 필수.** URL: `https://ywbyjmnkospyvbsaaxqc.supabase.co/functions/v1/crawl-fetch`.
 
-### 회차 9 작업 호출 패턴 — Edge Function via pg_net
+### 회차 9b 작업 호출 패턴 — Edge Function via pg_net
 ```sql
 -- Fire (do NOT wrap in DO block with raise — rollback risk)
 select net.http_post(
   url := 'https://ywbyjmnkospyvbsaaxqc.supabase.co/functions/v1/crawl-fetch',
-  body := jsonb_build_object('mode','discover','candidate_id', '<uuid>', 'domain', '<host>', 'max_per_type', 2),
+  body := jsonb_build_object('mode','discover','candidate_id', '<uuid>', 'domain', '<host>', 'max_per_type', 3),
   headers := '{"content-type":"application/json"}'::jsonb,
   timeout_milliseconds := 90000
 );
 -- Poll after ~30~60s
 select id, status_code, left(content, 400) from net._http_response where id = <req_id>;
 ```
-모드 `fetch` (URL 리스트 직접) / `discover` (도메인 → 자동 분류) 둘 다 사용 가능.
+모드 `fetch` (URL 리스트 직접) / `discover` (도메인 → 자동 분류) 둘 다 사용 가능. `max_per_type` 상한 3, scheme 옵션 `'http'`/`'https'`(기본 https + cert/tls/ssl/peer 오류 시 http 자동 fallback).
+
+### 회차 9c 누적 함정 (회차 8b·9a 함정과 별개로 추가 발견)
+5. Edge Function 링크 분류기가 일부 사이트(`taehwatech.com`/`hosungcnc.com`/`joungwoontech.co.kr`)의 홈페이지에서 anchor 텍스트나 path 패턴을 인식 못해 home 1건만 적재. SPA·이미지 nav 사이트로 추정. 회차 10+에서 sitemap.xml 보조 경로 검토.
+6. http→https로 server-side redirect하면 `scheme: "http"` 옵션을 줘도 결국 https TLS 검증에 막힘(`filtech.co.kr`). Edge Function에서 redirect 시 cert 무시 옵션이 없음.
+7. WebSearch가 인덱싱한 path가 사이트 현행과 다를 수 있음(`joungwoontech.co.kr/ko/...` 5건 모두 404). fetch 모드로 임의 URL 시도는 실패 시 fetch_failed_count 누적 위험 — discover 모드가 더 안전.
+8. https HandshakeFailure는 `scheme:"http"`로 회복 가능 (shcable.co.kr 성공 사례). server-side redirect 없는 사이트에 한함.
+9. `document` unique constraint가 `(seed_id, content_hash)`라 `seed_id=null`인 candidate 적재 시 중복 컨트롤 없음. 같은 candidate에 같은 내용 재크롤 시 row 중복 가능 — 회차 10에서 `(candidate_id, content_hash)` partial unique 추가 검토.
 
 ### 데이터 상태 (회차 9c 직후)
 - candidate **58건** (전부 status=scored). discovery_run 5개(round 1 Naver-dogfood / round 2~5 WebSearch).
@@ -260,20 +268,26 @@ select id, status_code, left(content, 400) from net._http_response where id = <r
 - 70↑ 점수 + docs 동반 회사 **27개** (D38 결정 가능 분량 충분).
 - fetch_failed_count ≥ 1 회사 **12개** (JS 렌더 9 + TLS/403 3): `dicorp.co.kr` `haewonvalve.co.kr` `k-ktech.co.kr` `dsfinetec.com` `kwanglim21.co.kr` `shenp.co.kr` `tzfilter.co.kr` `hanil83.co.kr` `mcvision.co.kr` `sgoilless.co.kr` `filtech.co.kr` `hankook-precisionworks.com`(2회 누적 + 14일 backoff).
 - 점수 30↓ 5개 (`dhb2b`/`worldchem`/`innp`/`odortech`/`keih`)는 카테고리 부적합, 회차 9b에서 reject 처리 후보. 점수 40~50 유통상사 5개(`mjchemical`/`sungshinmotor`/`motor-line`/`samicksys`/`lfine`)도 reject 또는 별도 카테고리 후보.
+- 70~82 점수 회사 표본 (Robin이 D38 결정 위해 어드민에서 펼쳐볼 만한 곳): `taehwatech`(82,2docs) `daeguntech`(82,4) `jei3`(80,5) `wbc-bearing`(80,7) `philtec`(80,7) `hosungcnc`(78,2) `dylboiler`(78,6) `koreard`(78,3) `koreaforging`(78,3) `koryontc`(78,3) `micable`(78,6) `shtek`(75,7) `cfiltec`(75,7) `yeileng`(75,4) `sdtron`(75,3) `pkvalve`(76,7) `da`(76,6) `cyautotech`(75,5) `ddchemical`(75,7) `kci0512`(74,3) `winco`(74,2) `jakyung`(73,4) `future-eng`(72,10) `gmp`(72,6) `shcable`(72,5) `ktht`(70,2) `gpkorea`(70,5).
 
 ### 읽는 순서
 1. `PLAN.md` (이 문서)
 2. `CLAUDE.md`
 3. `supabase/migrations/0004_content_layer.sql` (콘텐츠 레이어 스키마)
-4. `apps/admin/app/candidates/[id]/page.tsx` (Robin이 콘텐츠 보는 화면)
-5. `apps/admin/app/login/*` + `app/account/*` (인증 흐름 — 회차 9에서 보안 강화 시 참고)
+4. `apps/admin/app/candidates/page.tsx` + `apps/admin/app/candidates/[id]/page.tsx` (Robin이 콘텐츠 보는 화면)
+5. `apps/admin/app/login/*` + `app/account/*` (인증 흐름 — 회차 9b에서 보안 강화 시 참고)
 6. **Edge Function 소스 — 레포 외부**: Supabase 대시보드 / MCP `get_edge_function`으로 조회. `crawl-fetch/index.ts` 파일은 v0 인 tree에 두지 않음 (스키마/배포 일치 유지가 더 중요).
 
-### 회차 9 첫 메시지 후보 (Robin)
-- "콘텐츠 본문 봤어. 평가 기준은 X로 가자." → D38 확정 후 콘텐츠 점수 마이그레이션.
-- "Edge Function 토큰 보안 먼저 해줘." → vault 적용.
-- "후보 더 모아 — 키워드 Y, Z 추가." → Discovery 라운드 2.
-- "5개 카테고리 부적합 한 번에 거름 처리해." → reject UI.
+### 회차 9b 첫 메시지 후보 (Robin)
+- "콘텐츠 본문 봤어. 평가 기준은 X로 가자." → D38 확정 후 콘텐츠 점수 마이그레이션(0005).
+- "Edge Function 토큰 보안 먼저 해줘." → Vault에 `CRAWL_TOKEN` 저장 + 함수에서 `x-crawl-token` 검증.
+- "10개 카테고리 부적합 한 번에 거름 처리해." → reject UI + `operator_feedback` 적재 (30↓ 5개 + 40~50 유통상사 5개).
+- "후보 더 모아." → Discovery 라운드 6 (회차 9c의 함정 5·6·7·8 회피 가이드 적용해 다른 니치로).
+- "JS 렌더 9개 살려." → Edge Function에 Headless 브라우저 옵션 검토(예: Playwright on Cloudflare Browser Rendering API) 또는 Wayback/Jina 우회.
+
+### 회차 9c 작업 브랜치 정리 가이드
+- `claude/content-crawling-expansion-S8F2r`는 PLAN.md만 변경하므로 prod 머지 불필요. 회차 9b 작업자는 prod 브랜치(`claude/claude-md-docs-ViQmB`)에서 새 브랜치 따서 시작.
+- 회차 9c 데이터(58 candidates / 186 docs)는 Supabase에 영구 적재됨 — 브랜치 머지와 무관.
 
 ---
 
